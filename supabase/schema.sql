@@ -16,8 +16,8 @@ create table if not exists cb_users (
   role           text not null default 'client',
   blocked        boolean not null default false,
   blocked_reason text not null default '',
-  inventory      jsonb not null default '{"skins":["base"],"titles":[],"insurance":0,"bonus_boost_until":null,"limit_up":false,"emoji":""}'::jsonb,
-  equipped       jsonb not null default '{"skin":"base","title":"","emoji":""}'::jsonb,
+  inventory      jsonb not null default '{"skins":["base"],"titles":[],"insurance":0,"bonus_boost_until":null,"limit_up":false,"avatar":false}'::jsonb,
+  equipped       jsonb not null default '{"skin":"base","title":"","avatar":""}'::jsonb,
   settings       jsonb not null default '{"theme":"dark","hide_balance":false,"sound":true,"notify":true,"public":true}'::jsonb,
   last_bonus     date,
   created_at     timestamptz not null default now()
@@ -64,19 +64,29 @@ create table if not exists cb_shop_items (
 );
 
 insert into cb_shop_items(id, kind, value, price) values
-  ('skin_neon','skin','neon',2500),
-  ('skin_ice','skin','ice',3000),
-  ('skin_blood','skin','blood',3500),
-  ('skin_dark','skin','dark',4000),
-  ('skin_gold','skin','gold',9000),
+  ('skin_graphite','skin','graphite',2500),
+  ('skin_azure','skin','azure',3000),
+  ('skin_emerald','skin','emerald',3500),
+  ('skin_sand','skin','sand',4000),
+  ('skin_platinum','skin','platinum',9000),
   ('title_lucky','title','Везунчик',1500),
   ('title_vip','title','VIP-клиент',4000),
   ('title_magnat','title','Магнат',12000),
   ('insurance','consumable','',1200),
   ('bonus_boost','boost','',1800),
   ('limit_up','perk','',15000),
-  ('emoji','emoji','',700)
+  ('avatar','avatar','',700)
 on conflict (id) do update set kind = excluded.kind, value = excluded.value, price = excluded.price;
+
+delete from cb_shop_items where id in ('skin_neon','skin_ice','skin_blood','skin_dark','skin_gold','emoji');
+
+update cb_users
+   set inventory = (inventory - 'emoji') || jsonb_build_object('avatar', coalesce(inventory->>'emoji','') <> '')
+ where inventory ? 'emoji';
+
+update cb_users
+   set equipped = (equipped - 'emoji') || '{"avatar":""}'::jsonb
+ where equipped ? 'emoji';
 
 create index if not exists cb_tx_user_ts on cb_tx(user_id, ts desc);
 create index if not exists cb_tx_ts on cb_tx(ts desc);
@@ -378,7 +388,7 @@ begin
   if it.kind = 'skin' and invn->'skins' ? it.value then raise exception 'Скин уже куплен'; end if;
   if it.kind = 'title' and invn->'titles' ? it.value then raise exception 'Титул уже куплен'; end if;
   if it.kind = 'perk' and coalesce((invn->>'limit_up')::boolean,false) then raise exception 'Лимит уже повышен'; end if;
-  if it.kind = 'emoji' and coalesce(invn->>'emoji','') <> '' then raise exception 'Уже куплено'; end if;
+  if it.kind = 'avatar' and coalesce((invn->>'avatar')::boolean,false) then raise exception 'Уже куплено'; end if;
   if bal < it.price then raise exception 'Недостаточно чекурублей'; end if;
 
   if it.kind = 'skin' then
@@ -389,8 +399,8 @@ begin
     invn := jsonb_set(invn, '{limit_up}', 'true'::jsonb);
   elsif it.kind = 'consumable' then
     invn := jsonb_set(invn, '{insurance}', to_jsonb(coalesce((invn->>'insurance')::int,0) + 1));
-  elsif it.kind = 'emoji' then
-    invn := jsonb_set(invn, '{emoji}', to_jsonb('😎'::text));
+  elsif it.kind = 'avatar' then
+    invn := jsonb_set(invn, '{avatar}', 'true'::jsonb);
   elsif it.kind = 'boost' then
     base := greatest(coalesce((invn->>'bonus_boost_until')::timestamptz, now()), now());
     invn := jsonb_set(invn, '{bonus_boost_until}', to_jsonb((base + interval '7 days')));
@@ -411,8 +421,10 @@ begin
     if p_value <> 'base' and not (u.inventory->'skins' ? p_value) then raise exception 'Скин не куплен'; end if;
   elsif p_kind = 'title' then
     if p_value <> '' and not (u.inventory->'titles' ? p_value) then raise exception 'Титул не куплен'; end if;
-  elsif p_kind = 'emoji' then
-    if p_value <> '' and coalesce(u.inventory->>'emoji','') = '' then raise exception 'Смайл не куплен'; end if;
+  elsif p_kind = 'avatar' then
+    if p_value <> '' and not coalesce((u.inventory->>'avatar')::boolean, false) then
+      raise exception 'Цвет значка не куплен';
+    end if;
   else
     raise exception 'Неизвестный предмет';
   end if;

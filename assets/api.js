@@ -98,33 +98,42 @@
   const OWNER = { first: 'Сергей', last: 'Крюков' };
 
   const ROLES = {
-    client: { label: 'Клиент', icon: '👤' },
-    developer: { label: 'Разработчик', icon: '🛠' },
-    admin: { label: 'Администратор', icon: '👑' }
+    client: { label: 'Клиент', mark: '' },
+    developer: { label: 'Разработчик', mark: 'разработчик' },
+    admin: { label: 'Администратор', mark: 'админ' }
   };
 
   const SKINS = {
-    base:  { name: 'Классическая', css: 'linear-gradient(135deg,#2a1e6b 0%,#5b3ff0 45%,#0f7f6a 100%)' },
-    neon:  { name: 'Неон', css: 'linear-gradient(135deg,#12002e 0%,#ff2bd1 55%,#00e5ff 100%)' },
-    gold:  { name: 'Золотая', css: 'linear-gradient(135deg,#4a3405 0%,#d4a017 45%,#fff0b0 100%)' },
-    ice:   { name: 'Лёд', css: 'linear-gradient(135deg,#0b2b3a 0%,#3aa7d9 50%,#d7f4ff 100%)' },
-    blood: { name: 'Багровая', css: 'linear-gradient(135deg,#2b0410 0%,#c0143c 55%,#ff8b6b 100%)' },
-    dark:  { name: 'Карбон', css: 'linear-gradient(135deg,#0a0a0d 0%,#2b2f3a 55%,#5a6072 100%)' }
+    base:     { name: 'Классическая', css: 'linear-gradient(135deg,#232a3d 0%,#3b4a72 100%)' },
+    graphite: { name: 'Графит', css: 'linear-gradient(135deg,#1b1e26 0%,#3c424f 100%)' },
+    azure:    { name: 'Лазурь', css: 'linear-gradient(135deg,#1c3350 0%,#4a7ba8 100%)' },
+    sand:     { name: 'Песок', css: 'linear-gradient(135deg,#3a3226 0%,#a68f68 100%)' },
+    emerald:  { name: 'Изумруд', css: 'linear-gradient(135deg,#16332b 0%,#3f7a63 100%)' },
+    platinum: { name: 'Платина', css: 'linear-gradient(135deg,#2d3138 0%,#8d95a3 100%)' }
+  };
+
+  const AVATAR_COLORS = {
+    indigo: { name: 'Индиго', css: '#5c6bc0' },
+    teal:   { name: 'Бирюзовый', css: '#4e9a8a' },
+    slate:  { name: 'Графитовый', css: '#5a6474' },
+    plum:   { name: 'Сливовый', css: '#7a5c78' },
+    clay:   { name: 'Терракота', css: '#a1705a' },
+    moss:   { name: 'Мох', css: '#6a7d54' }
   };
 
   const SHOP = [
-    { id: 'skin_neon',  kind: 'skin',  value: 'neon',  price: 2500,  icon: '🌈', name: 'Скин «Неон»', desc: 'Розово-голубая карта' },
-    { id: 'skin_ice',   kind: 'skin',  value: 'ice',   price: 3000,  icon: '🧊', name: 'Скин «Лёд»', desc: 'Ледяная карта' },
-    { id: 'skin_blood', kind: 'skin',  value: 'blood', price: 3500,  icon: '🩸', name: 'Скин «Багровая»', desc: 'Тёмно-красная карта' },
-    { id: 'skin_dark',  kind: 'skin',  value: 'dark',  price: 4000,  icon: '🖤', name: 'Скин «Карбон»', desc: 'Матовая чёрная карта' },
-    { id: 'skin_gold',  kind: 'skin',  value: 'gold',  price: 9000,  icon: '🪙', name: 'Скин «Золотая»', desc: 'Самая дорогая карта банка' },
-    { id: 'title_lucky', kind: 'title', value: 'Везунчик',   price: 1500, icon: '🍀', name: 'Титул «Везунчик»', desc: 'Показывается в профиле и рейтинге' },
-    { id: 'title_vip',   kind: 'title', value: 'VIP-клиент', price: 4000, icon: '💎', name: 'Титул «VIP-клиент»', desc: 'Статус у имени' },
-    { id: 'title_magnat',kind: 'title', value: 'Магнат',     price: 12000, icon: '🎩', name: 'Титул «Магнат»', desc: 'Для очень богатых' },
-    { id: 'insurance',  kind: 'consumable', price: 1200, icon: '🛡', name: 'Страховка от просрочки', desc: 'Отменяет штраф 25% один раз' },
-    { id: 'bonus_boost', kind: 'boost', price: 1800, icon: '⚡', name: 'Двойной бонус, 7 дней', desc: 'Бонус дня 100 ₡ вместо 50' },
-    { id: 'limit_up',   kind: 'perk',  price: 15000, icon: '📈', name: 'Повышенный кредитный лимит', desc: 'Кредиты до 150 000 ₡ навсегда' },
-    { id: 'emoji',      kind: 'emoji', price: 700,  icon: '😎', name: 'Смайл вместо инициалов', desc: 'Свой значок в шапке и профиле' }
+    { id: 'skin_graphite', kind: 'skin', value: 'graphite', price: 2500, name: 'Оформление «Графит»', desc: 'Тёмно-серая карта' },
+    { id: 'skin_azure',    kind: 'skin', value: 'azure',    price: 3000, name: 'Оформление «Лазурь»', desc: 'Спокойная синяя карта' },
+    { id: 'skin_emerald',  kind: 'skin', value: 'emerald',  price: 3500, name: 'Оформление «Изумруд»', desc: 'Глубокий зелёный' },
+    { id: 'skin_sand',     kind: 'skin', value: 'sand',     price: 4000, name: 'Оформление «Песок»', desc: 'Тёплый бежевый' },
+    { id: 'skin_platinum', kind: 'skin', value: 'platinum', price: 9000, name: 'Оформление «Платина»', desc: 'Премиальная карта банка' },
+    { id: 'title_lucky',  kind: 'title', value: 'Везунчик',   price: 1500, name: 'Титул «Везунчик»', desc: 'Подпись у имени в профиле и рейтинге' },
+    { id: 'title_vip',    kind: 'title', value: 'VIP-клиент', price: 4000, name: 'Титул «VIP-клиент»', desc: 'Подпись у имени' },
+    { id: 'title_magnat', kind: 'title', value: 'Магнат',     price: 12000, name: 'Титул «Магнат»', desc: 'Для очень богатых' },
+    { id: 'insurance',   kind: 'consumable', price: 1200, name: 'Страховка от просрочки', desc: 'Отменяет штраф 25% один раз' },
+    { id: 'bonus_boost', kind: 'boost', price: 1800, name: 'Двойной бонус, 7 дней', desc: 'Бонус дня 100 ₡ вместо 50' },
+    { id: 'limit_up',    kind: 'perk',  price: 15000, name: 'Повышенный кредитный лимит', desc: 'Кредиты до 150 000 ₡ навсегда' },
+    { id: 'avatar',      kind: 'avatar', price: 700, name: 'Цвет значка', desc: 'Свой цвет инициалов в шапке и профиле' }
   ];
 
   class RemoteApi {
@@ -255,8 +264,8 @@
         phone: f.phone, email: f.email, pin_hash: await hashPin(f.phone, f.pin),
         balance: 0, created_at: new Date().toISOString(), last_bonus: null,
         role: owner ? 'admin' : 'client', blocked: false, blocked_reason: '',
-        inventory: { skins: ['base'], titles: [], insurance: 0, bonus_boost_until: null, limit_up: false, emoji: '' },
-        equipped: { skin: 'base', title: '', emoji: '' },
+        inventory: { skins: ['base'], titles: [], insurance: 0, bonus_boost_until: null, limit_up: false, avatar: false },
+        equipped: { skin: 'base', title: '', avatar: '' },
         settings: { theme: 'dark', hide_balance: false, sound: true, notify: true, public: true },
         ...card
       };
@@ -446,7 +455,7 @@
       if (item.kind === 'title') inv.titles.push(item.value);
       if (item.kind === 'perk') inv.limit_up = true;
       if (item.kind === 'consumable') inv.insurance = (inv.insurance || 0) + 1;
-      if (item.kind === 'emoji') inv.emoji = '😎';
+      if (item.kind === 'avatar') inv.avatar = true;
       if (item.kind === 'boost') {
         const base = inv.bonus_boost_until && new Date(inv.bonus_boost_until) > new Date()
           ? new Date(inv.bonus_boost_until).getTime() : Date.now();
@@ -462,7 +471,7 @@
       const inv = u.inventory;
       if (kind === 'skin' && value !== 'base' && !inv.skins.includes(value)) throw new Error('Скин не куплен');
       if (kind === 'title' && value && !inv.titles.includes(value)) throw new Error('Титул не куплен');
-      if (kind === 'emoji' && value && !inv.emoji) throw new Error('Смайл не куплен');
+      if (kind === 'avatar' && value && !inv.avatar) throw new Error('Цвет значка не куплен');
       u.equipped[kind] = value;
       this.save(db);
       return { user: this.pub(u) };
@@ -606,6 +615,7 @@
   global.CB = {
     createApi, readOverride, writeOverride, RemoteApi, LocalApi,
     utils: { translit, normalizePhone, prettyPhone, isEmail, luhnCheckDigit, uid },
-    consts: { WELCOME_BONUS, CREDIT_PLANS, PENALTY_RATE, CREDIT_LIMIT, CREDIT_LIMIT_VIP, SHOP, SKINS, ROLES, OWNER }
+    consts: { WELCOME_BONUS, CREDIT_PLANS, PENALTY_RATE, CREDIT_LIMIT, CREDIT_LIMIT_VIP,
+              SHOP, SKINS, AVATAR_COLORS, ROLES, OWNER }
   };
 })(window);

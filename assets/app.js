@@ -52,7 +52,7 @@
     const wrap = el('div', 'modal');
     const box = el('div', 'modal-box');
     const head = el('div', 'modal-head', `<h3>${esc(title)}</h3>`);
-    const close = el('button', 'icon-btn', '✕');
+    const close = el('button', 'icon-btn', 'Закрыть');
     head.appendChild(close);
     box.appendChild(head);
     const body = el('div', '', '');
@@ -158,10 +158,10 @@
     S.api = CB.createApi();
     const badge = $('#backend-badge');
     if (S.api.mode === 'online') {
-      badge.textContent = '● Онлайн-режим: счета общие для всех';
+      badge.textContent = 'Онлайн-режим: счета общие для всех';
       badge.classList.add('live');
     } else {
-      badge.textContent = '◐ Автономный режим: счёт хранится в этом браузере';
+      badge.textContent = 'Автономный режим: счёт хранится в этом браузере';
     }
 
     bindPhoneMask($('#rg-phone')); bindPhoneMask($('#li-phone'));
@@ -307,7 +307,8 @@
     const u = S.user;
     if (!u) return;
     $('#tb-avatar').textContent = avatarOf(u);
-    $('#tb-name').innerHTML = esc(u.first_name + ' ' + u.last_name) + roleMark(u);
+    $('#tb-avatar').style.setProperty('--av', avatarColor(u));
+    $('#tb-name').innerHTML = '<span>' + esc(u.first_name + ' ' + u.last_name) + '</span>' + roleMark(u);
     $('#tb-sub').textContent = (u.equipped && u.equipped.title) ? u.equipped.title : U.prettyPhone(u.phone);
     $('.tab[data-tab="admin"]').classList.toggle('hidden', !isStaff(u));
     const mode = $('#tb-mode');
@@ -324,8 +325,13 @@
   const hidden = () => !!(S.user.settings && S.user.settings.hide_balance);
   const isAdmin = u => u && u.role === 'admin';
   const isStaff = u => u && (u.role === 'admin' || u.role === 'developer');
-  const avatarOf = u => (u.equipped && u.equipped.emoji) || (u.first_name[0] + u.last_name[0]).toUpperCase();
-  const roleMark = u => u && C.ROLES[u.role] && u.role !== 'client' ? ' ' + C.ROLES[u.role].icon : '';
+  const avatarOf = u => (u.first_name[0] + u.last_name[0]).toUpperCase();
+  const avatarColor = u => {
+    const id = u && u.equipped && u.equipped.avatar;
+    return (id && C.AVATAR_COLORS[id]) ? C.AVATAR_COLORS[id].css : '';
+  };
+  const roleMark = u => u && C.ROLES[u.role] && C.ROLES[u.role].mark
+    ? ' <span class="tag">' + C.ROLES[u.role].mark + '</span>' : '';
   const inv = () => (S.user && S.user.inventory) || { skins: ['base'], titles: [], insurance: 0 };
 
   function viewHome(v) {
@@ -361,14 +367,14 @@
 
     const acts = el('div', 'actions');
     [
-      ['💸', 'Перевести', transferModal],
-      ['🎁', 'Бонус дня', dailyBonus],
-      ['🏆', 'Рейтинг', topModal],
-      ['🧾', 'История', () => goTab('history')],
-      ['🎮', 'Заработать', () => goTab('games')],
-      ['🛍', 'Магазин', () => goTab('shop')]
-    ].forEach(([ico, label, fn]) => {
-      const b = el('button', 'act', `<i>${ico}</i><span>${label}</span>`);
+      ['Перевести', transferModal],
+      ['Бонус дня', dailyBonus],
+      ['Рейтинг', topModal],
+      ['История', () => goTab('history')],
+      ['Заработать', () => goTab('games')],
+      ['Магазин', () => goTab('shop')]
+    ].forEach(([label, fn]) => {
+      const b = el('button', 'act', `<span>${label}</span>`);
       b.onclick = fn;
       acts.appendChild(b);
     });
@@ -400,8 +406,8 @@
   }
 
   const TX_ICONS = {
-    transfer_in: '⬇️', transfer_out: '⬆️', bonus: '🎁', game_bet: '🎲', game_win: '🏅',
-    credit: '💳', credit_pay: '✅', penalty: '⚠️', shop: '🛍', emission: '🏛'
+    transfer_in: '+', transfer_out: '−', bonus: '★', game_bet: '×', game_win: '×',
+    credit: 'К', credit_pay: 'П', penalty: '!', shop: 'М', emission: 'Б'
   };
 
   function txRow(t) {
@@ -470,8 +476,8 @@
         timer = setTimeout(async () => {
           try {
             const r = await S.api.find(S.token, q);
-            found.innerHTML = '✅ Получатель: <b>' + esc(r.name) + '</b>';
-          } catch (e) { found.textContent = '❌ ' + e.message; }
+            found.innerHTML = 'Получатель: <b>' + esc(r.name) + '</b>';
+          } catch (e) { found.textContent = e.message; }
         }, 400);
       });
 
@@ -574,12 +580,12 @@
   }
 
   const GAMES = [
-    { id: 'clicker', ico: '👆', name: 'Смена в банке', desc: 'Кликай 10 секунд — получай чекурубли. Без ставки.', risky: false, run: gameClicker },
-    { id: 'quiz', ico: '🧠', name: 'Викторина', desc: '5 вопросов о деньгах. По 15 ₡ за верный ответ.', risky: false, run: gameQuiz },
-    { id: 'coin', ico: '🪙', name: 'Орёл или решка', desc: 'Ставка ×1.95 при угадывании.', risky: true, run: gameCoin },
-    { id: 'dice', ico: '🎲', name: 'Кости против банка', desc: 'Твои 2 кубика против банка. Больше — ×2.', risky: true, run: gameDice },
-    { id: 'wheel', ico: '🎡', name: 'Колесо фортуны', desc: 'Сектора от ×0 до ×10.', risky: true, run: gameWheel },
-    { id: 'crash', ico: '🚀', name: 'Краш', desc: 'Множитель растёт — успей забрать до взрыва.', risky: true, run: gameCrash }
+    { id: 'clicker', name: 'Смена в банке', desc: 'Кликайте 10 секунд — получайте чекурубли. Без ставки.', risky: false, run: gameClicker },
+    { id: 'quiz', name: 'Викторина', desc: '5 вопросов о деньгах. По 15 ₡ за верный ответ.', risky: false, run: gameQuiz },
+    { id: 'coin', name: 'Орёл или решка', desc: 'Ставка ×1.95 при угадывании.', risky: true, run: gameCoin },
+    { id: 'dice', name: 'Кости против банка', desc: 'Ваши два кубика против банковских. Больше — ×2.', risky: true, run: gameDice },
+    { id: 'wheel', name: 'Колесо фортуны', desc: 'Сектора от ×0 до ×10.', risky: true, run: gameWheel },
+    { id: 'crash', name: 'Краш', desc: 'Множитель растёт — успейте забрать до обвала.', risky: true, run: gameCrash }
   ];
 
   const COOLDOWN = { clicker: 120e3, quiz: 300e3 };
@@ -623,8 +629,8 @@
   function gameTile(g) {
     const cd = cooldownLeft(g.id);
     const t = el('button', 'game' + (g.risky ? ' risky' : ''),
-      `<i>${g.ico}</i><b>${g.name}</b><span>${esc(g.desc)}</span>` +
-      (cd ? `<span class="muted">⏳ через ${Math.ceil(cd / 6e4)} мин.</span>` : ''));
+      `<b>${g.name}</b><span>${esc(g.desc)}</span>` +
+      (cd ? `<span class="muted">доступно через ${Math.ceil(cd / 6e4)} мин.</span>` : ''));
     t.onclick = () => {
       if (cooldownLeft(g.id)) return bad('Игра будет доступна через ' + Math.ceil(cooldownLeft(g.id) / 6e4) + ' мин.');
       g.run();
@@ -663,7 +669,7 @@
     modal('Смена в банке', (b, m) => {
       let clicks = 0, running = false, t = 10;
       const info = el('div', 'game-stage', `<div class="big-num">0</div><div class="muted">осталось 10 сек.</div>`);
-      const btn = el('button', 'clicker', '💰');
+      const btn = el('button', 'clicker', 'Работать');
       const start = el('button', 'btn primary full', 'Начать смену');
       b.append(info, el('div', 'game-stage'), start);
       b.querySelector('.game-stage:last-of-type').appendChild(btn);
@@ -738,7 +744,7 @@
   function gameCoin() {
     modal('Орёл или решка', (b, m) => {
       const getStake = stakeField(b);
-      const stage = el('div', 'game-stage', '<div class="big-num">🪙</div><div class="muted">Выберите сторону</div>');
+      const stage = el('div', 'game-stage', '<div class="big-num">—</div><div class="muted">Выберите сторону</div>');
       b.appendChild(stage);
       const row = el('div', 'grid2');
       [['Орёл', 0], ['Решка', 1]].forEach(([label, side]) => {
@@ -750,11 +756,11 @@
           const res = Math.random() < 0.5 ? 0 : 1;
           const face = stage.querySelector('.big-num');
           let n = 0;
-          const spin = setInterval(() => { face.textContent = (n++ % 2) ? '🪙' : '🌕'; }, 90);
+          const spin = setInterval(() => { face.textContent = (n++ % 2) ? 'О' : 'Р'; }, 90);
           setTimeout(() => {
             clearInterval(spin);
             const win = res === side;
-            face.textContent = res === 0 ? '🦅' : '🪙';
+            face.textContent = res === 0 ? 'Орёл' : 'Решка';
             stage.querySelector('.muted').innerHTML = win
               ? '<b class="pos">' + (res === 0 ? 'Орёл' : 'Решка') + ' — выигрыш!</b>'
               : '<b class="neg">' + (res === 0 ? 'Орёл' : 'Решка') + ' — мимо</b>';
@@ -770,13 +776,13 @@
     }, { sticky: true });
   }
 
-  const DICE = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+  const die = n => `<span class="die">${n}</span>`;
   function gameDice() {
     modal('Кости против банка', (b, m) => {
       const getStake = stakeField(b);
       const stage = el('div', 'game-stage', `
-        <div class="dice" id="d-me">🎲🎲</div><div class="muted">вы</div>
-        <div class="dice" id="d-bank">🎲🎲</div><div class="muted">банк</div>
+        <div class="dice" id="d-me">${die('?') + die('?')}</div><div class="muted">вы</div>
+        <div class="dice" id="d-bank">${die('?') + die('?')}</div><div class="muted">банк</div>
         <div id="d-res" class="muted">Победа — ×2, ничья — возврат ставки</div>`);
       b.appendChild(stage);
       const go = el('button', 'btn primary full', 'Бросить кости');
@@ -786,15 +792,15 @@
         go.disabled = true;
         const roll = () => [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
         const anim = setInterval(() => {
-          stage.querySelector('#d-me').textContent = roll().map(x => DICE[x - 1]).join('');
-          stage.querySelector('#d-bank').textContent = roll().map(x => DICE[x - 1]).join('');
+          stage.querySelector('#d-me').innerHTML = roll().map(die).join('');
+          stage.querySelector('#d-bank').innerHTML = roll().map(die).join('');
         }, 90);
         setTimeout(() => {
           clearInterval(anim);
           const me = roll(), bank = roll();
           const ms = me[0] + me[1], bs = bank[0] + bank[1];
-          stage.querySelector('#d-me').textContent = me.map(x => DICE[x - 1]).join('');
-          stage.querySelector('#d-bank').textContent = bank.map(x => DICE[x - 1]).join('');
+          stage.querySelector('#d-me').innerHTML = me.map(die).join('');
+          stage.querySelector('#d-bank').innerHTML = bank.map(die).join('');
           let payout = 0, text;
           if (ms > bs) { payout = stake * 2; text = 'Вы выиграли: ' + ms + ' против ' + bs; }
           else if (ms === bs) { payout = stake; text = 'Ничья ' + ms + ':' + bs + ' — ставка возвращена'; }
@@ -811,10 +817,10 @@
   }
 
   const SECTORS = [
-    { m: 0, w: 26, color: '#ff5470' }, { m: 0.5, w: 20, color: '#8e95b5' },
-    { m: 1.5, w: 22, color: '#7c5cff' }, { m: 2, w: 18, color: '#22d07a' },
-    { m: 3, w: 9, color: '#00e0a4' }, { m: 5, w: 4, color: '#ffb020' },
-    { m: 10, w: 1, color: '#ff8ad4' }
+    { m: 0, w: 26, color: '#8a4450' }, { m: 0.5, w: 20, color: '#5a6474' },
+    { m: 1.5, w: 22, color: '#5c6bc0' }, { m: 2, w: 18, color: '#4e9a8a' },
+    { m: 3, w: 9, color: '#3f7a63' }, { m: 5, w: 4, color: '#a68f68' },
+    { m: 10, w: 1, color: '#7a5c78' }
   ];
   function pickSector() {
     const total = SECTORS.reduce((s, x) => s + x.w, 0);
@@ -834,7 +840,7 @@
         return `${s.color} ${from}deg ${acc / total * 360}deg`;
       }).join(',') + ')';
       const label = el('div', 'muted', 'Шансы: ×0 · ×0.5 · ×1.5 · ×2 · ×3 · ×5 · ×10');
-      stage.append(el('div', 'big-num', '▼'), wheel, label);
+      stage.append(el('div', 'big-num', '|'), wheel, label);
       b.appendChild(stage);
       const go = el('button', 'btn primary full', 'Крутить');
       go.onclick = () => {
@@ -856,9 +862,9 @@
   }
 
   function gameCrash() {
-    modal('Краш 🚀', (b, m) => {
+    modal('Краш', (b, m) => {
       const getStake = stakeField(b);
-      const stage = el('div', 'game-stage', '<div class="big-num mult">1.00×</div><div class="muted">Заберите до взрыва</div>');
+      const stage = el('div', 'game-stage', '<div class="big-num mult">1.00×</div><div class="muted">Заберите до обвала</div>');
       b.appendChild(stage);
       const go = el('button', 'btn primary full', 'Запустить');
       const take = el('button', 'btn full', 'Забрать');
@@ -872,7 +878,7 @@
         clearInterval(iv); take.disabled = true;
         sub.innerHTML = `<b class="${good ? 'pos' : 'neg'}">${text}</b>`;
         settle('crash', stake, payout, 'Краш ×' + mult.toFixed(2)).then(() => {
-          setTimeout(() => { m.close(); good ? ok('Забрано ' + cur(payout)) : bad('Взрыв на ×' + mult.toFixed(2)); }, 900);
+          setTimeout(() => { m.close(); good ? ok('Забрано ' + cur(payout)) : bad('Обвал на ×' + mult.toFixed(2)); }, 900);
         });
       };
 
@@ -884,9 +890,9 @@
           mult = Math.round((mult + Math.max(0.01, mult * 0.035)) * 100) / 100;
           num.textContent = mult.toFixed(2) + '×';
           if (mult >= crashAt) {
-            num.textContent = '💥 ' + crashAt.toFixed(2) + '×';
+            num.textContent = crashAt.toFixed(2) + '×';
             mult = crashAt;
-            finish(0, 'Взрыв на ×' + crashAt.toFixed(2), false);
+            finish(0, 'Обвал на ×' + crashAt.toFixed(2), false);
           }
         }, 110);
       };
@@ -905,7 +911,7 @@
       <div class="sub">${active.length ? 'Активных кредитов: ' + active.length : 'Кредитов нет — можно взять'}</div></div>`;
     v.appendChild(head);
 
-    const take = el('button', 'btn primary full', '💳 Взять кредит');
+    const take = el('button', 'btn primary full', 'Взять кредит');
     take.onclick = creditModal;
     v.appendChild(take);
 
@@ -1006,7 +1012,7 @@
         const sum = Number(String(f.querySelector('input').value).replace(',', '.'));
         const r = await S.api.creditPay(S.token, c.id, sum);
         m.close(); await refresh(); render();
-        ok(r.credit.status === 'closed' ? 'Кредит полностью погашен 🎉' : 'Платёж принят: ' + cur(sum));
+        ok(r.credit.status === 'closed' ? 'Кредит полностью погашен' : 'Платёж принят: ' + cur(sum));
       });
       go.onclick = pay;
       b.append(all, go);
@@ -1043,20 +1049,20 @@
 
     const sec = el('div', 'card');
     sec.appendChild(el('div', 'sec-title', 'Безопасность'));
-    const pinBtn = el('button', 'btn full', '🔑 Сменить PIN-код');
+    const pinBtn = el('button', 'btn full', 'Сменить PIN-код');
     pinBtn.onclick = pinModal;
-    const srv = el('button', 'btn full ghost', '⚙︎ Сервер банка (' + (S.api.mode === 'online' ? 'онлайн' : 'автономно') + ')');
+    const srv = el('button', 'btn full ghost', 'Сервер банка — ' + (S.api.mode === 'online' ? 'онлайн' : 'автономно'));
     srv.onclick = serverModal;
-    const exp = el('button', 'btn full ghost', '⬇️ Выгрузить мои данные (JSON)');
+    const exp = el('button', 'btn full ghost', 'Выгрузить мои данные');
     exp.onclick = exportData;
     sec.append(pinBtn, srv, exp);
     v.appendChild(sec);
 
     const danger = el('div', 'card');
     danger.appendChild(el('div', 'sec-title', 'Опасная зона'));
-    const out = el('button', 'btn full', '🚪 Выйти из аккаунта');
+    const out = el('button', 'btn full', 'Выйти из аккаунта');
     out.onclick = () => confirmBox('Выход', 'Выйти из личного кабинета на этом устройстве?', logout);
-    const del = el('button', 'btn full danger', '🗑 Удалить счёт навсегда');
+    const del = el('button', 'btn full danger', 'Удалить счёт навсегда');
     del.onclick = () => confirmBox('Удаление счёта',
       'Счёт, карта, история и кредиты будут удалены безвозвратно. Продолжить?',
       () => guard(async () => { await S.api.remove(S.token); logout(); }), true);
@@ -1128,11 +1134,11 @@
     const head = el('div', 'card');
     head.innerHTML = `
       <div style="display:grid;justify-items:center;gap:8px;padding:6px 0">
-        <div class="avatar" style="width:72px;height:72px;border-radius:24px;font-size:26px">${esc(avatarOf(u))}</div>
+        <div class="avatar" style="width:70px;height:70px;border-radius:20px;font-size:22px;--av:${avatarColor(u) || 'var(--acc)'}">${esc(avatarOf(u))}</div>
         <b style="font-size:19px">${esc(u.first_name + ' ' + u.last_name)}${roleMark(u)}</b>
         <span class="muted">${esc(u.card_holder)}</span>
         ${u.equipped && u.equipped.title ? `<span class="tag ok">${esc(u.equipped.title)}</span>` : ''}
-        <span class="chip">${C.ROLES[u.role] ? C.ROLES[u.role].icon + ' ' + C.ROLES[u.role].label : 'Клиент'}</span>
+        <span class="chip">${C.ROLES[u.role] ? esc(C.ROLES[u.role].label) : 'Клиент'}</span>
         <span class="chip">Клиент с ${new Date(u.created_at).toLocaleDateString('ru-RU')}</span>
       </div>`;
     v.appendChild(head);
@@ -1168,16 +1174,16 @@
     v.appendChild(cardBox);
 
     if (isStaff(u)) {
-      const adm = el('button', 'btn primary full', (isAdmin(u) ? '👑 Панель администратора' : '🛠 Панель разработчика'));
+      const adm = el('button', 'btn primary full', isAdmin(u) ? 'Панель администратора' : 'Панель разработчика');
       adm.onclick = () => goTab('admin');
       v.appendChild(adm);
     }
 
-    const edit = el('button', 'btn primary full', '✏️ Изменить контакты');
+    const edit = el('button', 'btn primary full', 'Изменить контакты');
     edit.onclick = editProfile;
     v.appendChild(edit);
 
-    const share = el('button', 'btn full', '📨 Мои реквизиты для перевода');
+    const share = el('button', 'btn full', 'Мои реквизиты для перевода');
     share.onclick = () => modal('Реквизиты для перевода', b => {
       b.appendChild(el('div', 'card', `
         <div class="kv"><span>Получатель</span><b>${esc(u.first_name + ' ' + u.last_name)}</b></div>
@@ -1265,16 +1271,21 @@
     }
     v.appendChild(titles);
 
-    if (i.emoji) {
-      v.appendChild(el('div', 'sec-title', 'Значок вместо инициалов'));
-      const row = el('div', 'emoji-row');
-      ['😎', '🤑', '👑', '🐺', '🦊', '🍀', '🚀', '🔥', '🐉', '🎩'].forEach(e => {
-        const b = el('button', 'emoji-btn' + (u.equipped && u.equipped.emoji === e ? ' on' : ''), e);
-        b.onclick = () => equip('emoji', e);
+    if (i.avatar) {
+      v.appendChild(el('div', 'sec-title', 'Цвет значка'));
+      const row = el('div', 'av-row');
+      Object.entries(C.AVATAR_COLORS).forEach(([id, c]) => {
+        const b = el('button', 'av-btn' + (u.equipped && u.equipped.avatar === id ? ' on' : ''),
+          esc((u.first_name[0] + u.last_name[0]).toUpperCase()));
+        b.style.background = c.css;
+        b.title = c.name;
+        b.onclick = () => equip('avatar', id);
         row.appendChild(b);
       });
-      const off = el('button', 'emoji-btn' + (!(u.equipped && u.equipped.emoji) ? ' on' : ''), 'АБ');
-      off.onclick = () => equip('emoji', '');
+      const off = el('button', 'av-btn' + (!(u.equipped && u.equipped.avatar) ? ' on' : ''), 'Сброс');
+      off.style.background = 'var(--panel2)';
+      off.style.color = 'var(--muted)';
+      off.onclick = () => equip('avatar', '');
       row.appendChild(off);
       v.appendChild(row);
     }
@@ -1287,7 +1298,7 @@
         (it.kind === 'skin' && (i.skins || []).includes(it.value)) ||
         (it.kind === 'title' && (i.titles || []).includes(it.value)) ||
         (it.kind === 'perk' && i.limit_up) ||
-        (it.kind === 'emoji' && i.emoji);
+        (it.kind === 'avatar' && i.avatar);
       const box = el('div', 'good');
       box.innerHTML = `<div class="good-ico">${it.icon}</div>
         <div class="good-main"><b>${esc(it.name)}</b><span class="muted">${esc(it.desc)}</span>
@@ -1323,7 +1334,7 @@
 
     const head = el('div', 'card');
     head.innerHTML = `<div class="balance">
-      <div class="sub">${isAdmin(me) ? '👑 Панель администратора' : '🛠 Панель разработчика'}</div>
+      <div class="sub">${isAdmin(me) ? 'Панель администратора' : 'Панель разработчика'}</div>
       <div class="amount" style="font-size:22px">${esc(me.first_name + ' ' + me.last_name)}</div>
       <div class="sub">${isAdmin(me) ? 'полный доступ' : 'только просмотр аналитики и клиентов'}</div></div>`;
     v.appendChild(head);
@@ -1415,7 +1426,7 @@
       box.innerHTML = '';
 
       if (isAdmin(S.user)) {
-        const issue = el('button', 'btn primary full', '🏛 Выдать чекурубли');
+        const issue = el('button', 'btn primary full', 'Выдать чекурубли');
         issue.onclick = () => issueModal();
         box.appendChild(issue);
       }
@@ -1438,7 +1449,7 @@
           <div class="person-head">
             <div class="avatar">${esc((r.first_name[0] + r.last_name[0]).toUpperCase())}</div>
             <div class="person-main">
-              <b>${esc(r.first_name + ' ' + r.last_name)} ${C.ROLES[r.role] ? C.ROLES[r.role].icon : ''}</b>
+              <b>${esc(r.first_name + ' ' + r.last_name)}${roleMark(r)}</b>
               <span class="muted mono">${esc(U.prettyPhone(r.phone))}</span>
             </div>
             <b class="${r.balance < 0 ? 'neg' : ''}">${cur(r.balance)}</b>
@@ -1454,16 +1465,16 @@
           const acts = el('div', 'grid2');
           acts.style.marginTop = '10px';
 
-          const give = el('button', 'btn mini primary', '🏛 Начислить');
+          const give = el('button', 'btn mini primary', 'Начислить');
           give.onclick = () => issueModal(r.phone);
 
-          const role = el('button', 'btn mini', '🎖 Роль');
+          const role = el('button', 'btn mini', 'Статус');
           role.onclick = () => roleModal(r);
 
-          const block = el('button', 'btn mini ' + (r.blocked ? '' : 'danger'), r.blocked ? '🔓 Разблокировать' : '🚫 Заблокировать');
+          const block = el('button', 'btn mini ' + (r.blocked ? '' : 'danger'), r.blocked ? 'Разблокировать' : 'Заблокировать');
           block.onclick = () => r.blocked ? doBlock(r, false, '') : blockModal(r);
 
-          const send = el('button', 'btn mini', '💸 Перевести');
+          const send = el('button', 'btn mini', 'Перевести');
           send.onclick = () => transferModal(r.phone);
 
           acts.append(give, role, block, send);
@@ -1504,7 +1515,7 @@
           b.appendChild(el('p', 'muted', esc(r.first_name + ' ' + r.last_name) + ' — текущий статус: ' +
             (C.ROLES[r.role] ? C.ROLES[r.role].label : 'Клиент')));
           Object.entries(C.ROLES).forEach(([id, info]) => {
-            const btn = el('button', 'btn full' + (id === r.role ? ' primary' : ''), info.icon + ' ' + info.label);
+            const btn = el('button', 'btn full' + (id === r.role ? ' primary' : ''), info.label);
             btn.onclick = () => guard(async () => {
               await S.api.adminRole(S.token, r.phone, id);
               m.close(); refreshList();
