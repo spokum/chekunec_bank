@@ -1,3 +1,1165 @@
+<title>Чекунец Банк</title>
+<style>
+:root{
+  --bg:#12141a; --bg2:#171a2170; --panel:#191c24; --panel2:#1f232c;
+  --line:#2a2f3a; --text:#e6e8ee; --muted:#8b93a5;
+  --acc:#5c6bc0; --acc2:#4e9a8a; --warn:#c79a4a; --bad:#c9596b; --good:#5aa87a;
+  --r:14px; --shadow:0 6px 18px rgba(0,0,0,.28);
+}
+:root[data-theme="light"]{
+  --bg:#f4f5f8; --bg2:#ffffffcc; --panel:#ffffff; --panel2:#f7f8fb;
+  --line:#e2e5ec; --text:#1b1e26; --muted:#6b7280;
+  --acc:#4d5bad; --acc2:#3f8676;
+  --shadow:0 4px 14px rgba(20,25,40,.07);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:var(--bg);overflow-x:hidden;
+  color:var(--text);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
+  overscroll-behavior-y:none;
+}
+b{font-weight:700}
+.muted{color:var(--muted)}
+.hidden{display:none!important}
+.cur{color:var(--text);font-weight:700}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+
+.boot{position:fixed;inset:0;display:grid;place-content:center;justify-items:center;gap:16px;background:var(--bg);z-index:60;transition:opacity .35s}
+.boot.off{opacity:0;pointer-events:none}
+.boot-name{letter-spacing:.3em;font-weight:700;font-size:13px;color:var(--muted)}
+.boot-bar{width:170px;height:4px;border-radius:4px;background:var(--line);overflow:hidden}
+.boot-bar i{display:block;height:100%;width:40%;border-radius:4px;background:var(--acc);animation:run 1.1s infinite}
+@keyframes run{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}
+
+.screen{display:none;min-height:100dvh}
+.screen.on{display:block}
+
+.auth-wrap{max-width:460px;margin:0 auto;padding:34px 16px 60px}
+.auth-head{text-align:center;margin-bottom:18px}
+.auth-head h1{margin:0 0 4px;font-size:25px;letter-spacing:-.4px;font-weight:700}
+.badge{display:inline-block;margin-top:10px;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;background:var(--panel2);border:1px solid var(--line);color:var(--muted)}
+.badge.live{color:var(--acc2);border-color:var(--acc2)}
+.seg{display:flex;gap:6px;padding:5px;background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:14px}
+.seg-btn{flex:1;padding:10px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:inherit;font-weight:600;cursor:pointer}
+.seg-btn.active{background:var(--acc);color:#fff}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:var(--shadow)}
+.form{display:grid;gap:13px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.field{display:grid;gap:6px}
+.field>span{font-size:12.5px;color:var(--muted);font-weight:600}
+input,select,textarea{
+  width:100%;padding:12px 13px;border-radius:12px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--text);font:inherit;outline:none;transition:border-color .15s,box-shadow .15s;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 2px rgba(92,107,192,.22)}
+input.bad{border-color:var(--bad)}
+.err{font-size:12px;color:var(--bad);font-style:normal;min-height:0}
+.err:not(:empty){min-height:14px}
+.check{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--muted)}
+.check input{width:18px;height:18px;flex:0 0 auto;accent-color:var(--acc)}
+.hint{font-size:12.5px;color:var(--muted);margin:2px 0 0;text-align:center}
+
+.btn{padding:13px 16px;border-radius:13px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-weight:700;cursor:pointer;transition:transform .08s,filter .15s}
+.btn:active{transform:scale(.985)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.primary{border:1px solid var(--acc);background:var(--acc);color:#fff}
+.btn.ghost{background:transparent}
+.btn.danger{border-color:var(--bad);color:var(--bad);background:transparent}
+.btn.mini{padding:8px 12px;font-size:13px;border-radius:10px}
+.btn.full{width:100%}
+.link-btn{display:block;margin:16px auto 0;background:none;border:0;color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+.icon-btn{min-width:34px;height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+
+.bankcard{
+  position:relative;border-radius:16px;padding:18px;color:#fff;overflow:hidden;
+  background:linear-gradient(135deg,#232a3d 0%,#3b4a72 100%);
+  box-shadow:var(--shadow);aspect-ratio:1.585;max-width:400px;
+  display:flex;flex-direction:column;justify-content:space-between;
+}
+.bankcard::after{content:"";position:absolute;inset:-40% -10% auto auto;width:70%;aspect-ratio:1;border-radius:50%;background:#ffffff0d}
+.bankcard.big{margin:0 auto}
+.bc-top{display:flex;justify-content:space-between;align-items:flex-start;position:relative;z-index:1}
+.bc-brand{font-weight:800;letter-spacing:.16em;font-size:12px}
+.bc-brand small{display:block;letter-spacing:.05em;font-weight:600;opacity:.75;font-size:10px}
+.bc-chip{width:36px;height:26px;border-radius:5px;background:linear-gradient(135deg,#d8c48c,#a98f52);position:relative;z-index:1}
+.bc-num{font-size:20px;letter-spacing:.11em;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;position:relative;z-index:1}
+.bc-bot{display:flex;justify-content:space-between;align-items:flex-end;gap:10px;position:relative;z-index:1}
+.bc-lbl{font-size:8.5px;letter-spacing:.12em;opacity:.7}
+.bc-holder{font-weight:700;letter-spacing:.06em;font-size:13px;text-transform:uppercase}
+.bc-sys{font-weight:800;font-style:italic;font-size:15px;letter-spacing:.04em}
+@media(max-width:380px){.bc-num{font-size:17px}}
+
+.issued-wrap{max-width:460px;margin:0 auto;padding:30px 16px 50px;display:grid;gap:18px}
+.issued-title{text-align:center}
+.issued-title h2{margin:0 0 4px}
+.issued-facts{list-style:none;margin:0;padding:14px 16px;display:grid;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+.issued-facts li{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.issued-facts span{color:var(--muted)}
+
+.topbar{
+  position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:12px 14px;background:var(--bg2);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);
+}
+.topbar-user{display:flex;gap:10px;align-items:center;min-width:0;flex:1}
+.topbar-user>div{min-width:0}
+.topbar-right{display:flex;gap:8px;align-items:center}
+.avatar{width:40px;height:40px;flex:0 0 auto;border-radius:11px;display:grid;place-content:center;font-weight:700;font-size:13px;letter-spacing:.02em;color:#fff;background:var(--av,var(--acc))}
+.tb-name{font-weight:700;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tb-sub{font-size:12px;display:flex;align-items:center;gap:6px;min-width:0}
+.tb-sub>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--muted)}
+.chip.live{color:var(--acc2);border-color:var(--acc2)}
+
+.view{max-width:560px;margin:0 auto;padding:14px 14px 96px;display:grid;gap:14px}
+.tabbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:25;display:flex;gap:2px;
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom));background:var(--bg2);backdrop-filter:blur(14px);border-top:1px solid var(--line);
+}
+.tab{flex:1 1 0;min-width:0;display:grid;justify-items:center;padding:10px 2px;border:0;background:none;color:var(--muted);font:inherit;font-size:12px;font-weight:600;cursor:pointer;border-radius:10px}
+.tab span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab.active{color:var(--text);background:var(--panel)}
+
+
+.sec-title{margin:2px 0 -4px;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.balance{display:grid;gap:4px;text-align:center;padding:6px 0 2px}
+.balance .amount{font-size:34px;font-weight:700;letter-spacing:-.8px}
+.balance .amount small{font-size:18px;color:var(--muted)}
+.balance .sub{font-size:12.5px;color:var(--muted)}
+.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.act{display:grid;gap:5px;justify-items:center;padding:12px 6px;border-radius:15px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+.act i{font-style:normal;font-size:20px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv:last-child{border-bottom:0}
+.kv span{color:var(--muted)}
+.kv b{text-align:right;word-break:break-word}
+.mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;letter-spacing:.03em}
+
+.tx{display:flex;gap:11px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.tx:last-child{border-bottom:0}
+.tx-ico{width:38px;height:38px;flex:0 0 auto;border-radius:12px;display:grid;place-content:center;font-size:17px;background:var(--panel2);border:1px solid var(--line)}
+.tx-main{flex:1;min-width:0}
+.tx-t{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-d{font-size:11.5px;color:var(--muted)}
+.tx-a{font-weight:700;font-size:14.5px;white-space:nowrap}
+.empty{text-align:center;color:var(--muted);padding:26px 10px;font-size:13.5px}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.game{display:grid;gap:6px;padding:14px;border-radius:16px;border:1px solid var(--line);background:var(--panel);cursor:pointer;text-align:left;color:var(--text);font:inherit}
+.game i{font-style:normal;font-size:24px}
+.game b{font-size:14px}
+.game span{font-size:11.5px;color:var(--muted);line-height:1.3}
+.game.risky{border-color:var(--warn)}
+
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center}
+.stat{padding:11px 6px;border-radius:14px;background:var(--panel2);border:1px solid var(--line)}
+.stat b{display:block;font-size:17px}
+.stat span{font-size:11px;color:var(--muted)}
+
+.credit{padding:13px;border-radius:15px;border:1px solid var(--line);background:var(--panel2);display:grid;gap:8px}
+.credit.overdue{border-color:var(--bad)}
+.credit-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.tag{flex:0 0 auto;font-size:10px;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);letter-spacing:.02em;white-space:nowrap}
+.tag.ok{color:var(--good);border-color:var(--good)}
+.tag.warn{color:var(--warn);border-color:var(--warn)}
+.tag.bad{color:var(--bad);border-color:var(--bad)}
+.bar{height:7px;border-radius:6px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--acc)}
+
+.switch{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.switch:last-of-type{border-bottom:0}
+.switch small{display:block;color:var(--muted);font-size:11.5px}
+.sw{position:relative;width:48px;height:28px;flex:0 0 auto}
+.sw input{opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.sw i{position:absolute;inset:0;border-radius:999px;background:var(--line);transition:.2s;pointer-events:none}
+.sw i::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s}
+.sw input:checked+i{background:var(--acc)}
+.sw input:checked+i::after{transform:translateX(20px)}
+
+.modal{position:fixed;inset:0;z-index:50;display:grid;place-items:end center;background:#0007;backdrop-filter:blur(3px);animation:fade .18s}
+.modal-box{width:100%;max-width:520px;max-height:92dvh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:22px 22px 0 0;padding:18px 16px calc(20px + env(safe-area-inset-bottom));display:grid;gap:13px;animation:up .22s cubic-bezier(.2,.9,.3,1)}
+@media(min-width:560px){.modal{place-items:center}.modal-box{border-radius:22px}}
+@keyframes up{from{transform:translateY(28px);opacity:.4}}
+@keyframes fade{from{opacity:0}}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.modal-head h3{margin:0;font-size:18px}
+.toasts{position:fixed;left:0;right:0;top:10px;z-index:70;display:grid;gap:8px;justify-items:center;pointer-events:none;padding:0 12px}
+.toast{max-width:440px;padding:11px 15px;border-radius:14px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);font-size:13.5px;font-weight:600;animation:fade .18s}
+.toast.ok{border-color:var(--good)}.toast.err{border-color:var(--bad)}
+
+.game-stage{display:grid;gap:12px;justify-items:center;text-align:center;padding:8px 0}
+.big-num{font-size:46px;font-weight:800;letter-spacing:-1.5px}
+.dice{font-size:52px;letter-spacing:6px}
+.wheel{width:190px;height:190px;border-radius:50%;border:8px solid var(--panel2);transition:transform 3.6s cubic-bezier(.15,.9,.2,1)}
+.quiz-q{font-size:16px;font-weight:700;text-align:center}
+.quiz-opts{display:grid;gap:8px}
+.clicker{width:150px;height:150px;border-radius:50%;border:1px solid var(--acc);font-size:17px;font-weight:700;color:#fff;background:var(--acc);cursor:pointer}
+.clicker:active{transform:scale(.94)}
+.mult{font-variant-numeric:tabular-nums}
+
+.skins{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.skin{display:grid;gap:5px;justify-items:center;text-align:center;padding:12px 8px;border-radius:15px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;cursor:pointer}
+.skin.on{border-color:var(--acc)}
+.skin b{font-size:13px}
+.skin span.muted{font-size:11px}
+.skin-dot{width:46px;height:30px;border-radius:8px;display:block}
+
+.emoji-row{display:flex;flex-wrap:wrap;gap:8px}
+.emoji-btn{width:46px;height:46px;border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-size:20px;cursor:pointer}
+.emoji-btn.on{border-color:var(--acc)}
+
+.good{display:flex;gap:11px;align-items:center;padding:12px;border-radius:15px;border:1px solid var(--line);background:var(--panel)}
+.good-ico{width:42px;height:42px;flex:0 0 auto;border-radius:13px;display:grid;place-content:center;font-size:20px;background:var(--panel2);border:1px solid var(--line)}
+.good-main{flex:1;min-width:0;display:grid;gap:2px}
+.good-main b{font-size:14px}
+.good-main span{font-size:11.5px;line-height:1.3}
+
+.chart{display:flex;align-items:flex-end;gap:6px;padding:8px 0 0}
+.chart-col{flex:1;display:grid;justify-items:center;gap:4px;font-size:10px;color:var(--muted)}
+.chart-col b{font-size:11px;color:var(--text)}
+.chart-col i{display:block;width:100%;max-width:26px;border-radius:5px 5px 2px 2px;background:var(--acc)}
+
+.person{display:grid;gap:2px}
+.person.blocked{border-color:var(--bad)}
+.person-head{display:flex;gap:10px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.person-main{flex:1;min-width:0;display:grid}
+.person-main b{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.person-main span{font-size:11.5px}
+
+.tx-ico{font-size:15px;font-weight:700;color:var(--muted)}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.av-row{display:flex;flex-wrap:wrap;gap:9px}
+.av-btn{width:44px;height:44px;border-radius:12px;border:2px solid transparent;cursor:pointer;color:#fff;font-weight:700;font-size:12px}
+.av-btn.on{border-color:var(--text)}
+.die{display:inline-grid;place-content:center;width:44px;height:44px;margin:0 4px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);font-size:20px;font-weight:700}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.highlight{border-color:var(--acc)}
+.bc-engrave{position:relative;z-index:1;font-size:10px;letter-spacing:.22em;opacity:.85;font-weight:600}
+
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pad-cell{aspect-ratio:1;border-radius:12px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font:inherit;font-size:15px;font-weight:700;cursor:pointer;transition:background .12s,color .12s}
+.pad-cell.lit{background:var(--acc);border-color:var(--acc);color:#fff}
+
+.mines{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.mine{aspect-ratio:1;border-radius:9px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.mine.open{background:var(--acc);border-color:var(--acc);color:#fff}
+.mine.boom{background:var(--bad);border-color:var(--bad);color:#fff}
+
+.cup{padding:16px 6px;border-radius:13px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.cup.good{border-color:var(--good);color:var(--good)}
+.cup.gone{opacity:.5}
+
+.reels{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}
+.reel{padding:20px 4px;border-radius:13px;border:1px solid var(--line);background:var(--panel2);font-size:17px;font-weight:800;letter-spacing:.04em}
+
+.tower{display:grid;gap:8px}
+.tower-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.door{padding:12px 4px;border-radius:11px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}
+.door:not(:disabled){color:var(--text);border-color:var(--acc)}
+.door.good{border-color:var(--good);color:var(--good)}
+.door.gone{border-color:var(--bad);color:var(--bad)}
+
+.hilo-card{width:96px;height:130px;border-radius:14px;border:1px solid var(--line);background:var(--panel2);display:grid;place-content:center;font-size:40px;font-weight:800}
+
+.reveal{animation:cardIn .85s cubic-bezier(.16,.9,.25,1) both}
+@keyframes cardIn{
+  0%{opacity:0;transform:translateY(26px) scale(.86) rotateX(28deg) rotateZ(-4deg)}
+  60%{opacity:1;transform:translateY(0) scale(1.02) rotateX(0) rotateZ(0)}
+  100%{opacity:1;transform:none}
+}
+.reveal::before{
+  content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.34) 50%,transparent 62%);
+  transform:translateX(-120%);animation:shine 1.15s .5s ease-out both;
+}
+@keyframes shine{to{transform:translateX(120%)}}
+.rise{animation:rise .5s cubic-bezier(.2,.9,.3,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+.more-list{display:grid;gap:8px}
+.more-item{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px;border-radius:13px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-weight:600;cursor:pointer;text-align:left}
+.more-item.on{border-color:var(--acc)}
+.more-item small{color:var(--muted);font-weight:500}
+.track{position:relative;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);overflow:hidden}
+.track .zone{position:absolute;top:0;bottom:0;background:rgba(90,168,122,.28);border-left:1px solid var(--good);border-right:1px solid var(--good)}
+.track .marker{position:absolute;top:4px;bottom:4px;width:5px;border-radius:3px;background:var(--text)}
+.notes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.note{padding:16px 4px;border-radius:11px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font:inherit;font-weight:700;font-size:13px;cursor:pointer}
+.note.right{border-color:var(--good);color:var(--good)}
+.note.wrong{border-color:var(--bad);color:var(--bad)}
+.note:disabled{opacity:.45}
+.race{display:grid;gap:8px}
+.lane{display:grid;grid-template-columns:76px 1fr;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.lane i{display:block;height:14px;width:0;border-radius:7px;background:var(--acc);transition:width .09s linear}
+.dump{width:100%;min-height:200px;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-size:11px;line-height:1.4;resize:vertical}
+
+</style>
+
+
+<div id="boot" class="boot">
+  <div class="boot-name">ЧЕКУНЕЦ БАНК</div>
+  <div class="boot-bar"><i></i></div>
+</div>
+<section id="screen-auth" class="screen">
+  <div class="auth-wrap">
+    <header class="auth-head">
+      <h1>Чекунец Банк</h1>
+      <p class="muted">Считаем в <b>чекурублях</b>, живём по чекушкам</p>
+      <div id="backend-badge" class="badge">…</div>
+    </header>
+
+    <div id="auth-tabs" class="seg">
+      <button class="seg-btn active" data-auth="login">Вход</button>
+      <button class="seg-btn" data-auth="register">Регистрация</button>
+    </div>
+    <form id="form-login" class="card form">
+      <label class="field">
+        <span>Телефон</span>
+        <input id="li-phone" type="tel" inputmode="tel" placeholder="+7 (___) ___-__-__" autocomplete="username">
+        <em class="err"></em>
+      </label>
+      <label class="field">
+        <span>PIN-код (4 цифры)</span>
+        <input id="li-pin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="current-password">
+        <em class="err"></em>
+      </label>
+      <button class="btn primary" type="submit">Войти в личный кабинет</button>
+      <p class="hint">Нет счёта? Откройте его на вкладке «Регистрация» — карта выдаётся сразу.</p>
+    </form>
+    <form id="form-register" class="card form hidden">
+      <div class="row">
+        <label class="field">
+          <span>Имя</span>
+          <input id="rg-first" placeholder="Иван" autocomplete="given-name">
+          <em class="err"></em>
+        </label>
+        <label class="field">
+          <span>Фамилия</span>
+          <input id="rg-last" placeholder="Чекунов" autocomplete="family-name">
+          <em class="err"></em>
+        </label>
+      </div>
+      <label class="field">
+        <span>Телефон</span>
+        <input id="rg-phone" type="tel" inputmode="tel" placeholder="+7 (___) ___-__-__" autocomplete="tel">
+        <em class="err"></em>
+      </label>
+      <label class="field">
+        <span>Почта</span>
+        <input id="rg-email" type="email" inputmode="email" placeholder="ivan@mail.ru" autocomplete="email">
+        <em class="err"></em>
+      </label>
+      <div class="row">
+        <label class="field">
+          <span>PIN-код</span>
+          <input id="rg-pin" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="new-password">
+          <em class="err"></em>
+        </label>
+        <label class="field">
+          <span>Повторите PIN</span>
+          <input id="rg-pin2" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="new-password">
+          <em class="err"></em>
+        </label>
+      </div>
+      <label class="check">
+        <input id="rg-agree" type="checkbox">
+        <span>Согласен с условиями обслуживания Чекунец Банка</span>
+      </label>
+      <button class="btn primary" type="submit">Открыть счёт и выпустить карту</button>
+    </form>
+
+    <button id="btn-server" class="link-btn">Настройка сервера</button>
+  </div>
+</section>
+<section id="screen-issued" class="screen">
+  <div class="issued-wrap">
+    <div class="issued-title">
+      <h2>Карта выпущена</h2>
+      <p class="muted">Добро пожаловать в Чекунец Банк, <b id="is-name">—</b></p>
+    </div>
+    <div id="is-card" class="bankcard big reveal"></div>
+    <ul class="issued-facts">
+      <li><span>Номер счёта</span><b id="is-acc">—</b></li>
+      <li><span>Держатель</span><b id="is-holder">—</b></li>
+      <li><span>Срок действия</span><b id="is-exp">—</b></li>
+      <li><span>Приветственный бонус</span><b id="is-bonus">—</b></li>
+    </ul>
+    <button id="btn-issued-go" class="btn primary">Перейти в личный кабинет</button>
+  </div>
+</section>
+<section id="screen-app" class="screen">
+  <header class="topbar">
+    <div class="topbar-user">
+      <div id="tb-avatar" class="avatar">ЧБ</div>
+      <div>
+        <div id="tb-name" class="tb-name">—</div>
+        <div id="tb-sub" class="tb-sub muted">—</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="tb-mode" class="chip">—</span>
+      <button id="btn-refresh" class="icon-btn" title="Обновить">Обновить</button>
+    </div>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav class="tabbar">
+    <button class="tab active" data-tab="home"><span>Главная</span></button>
+    <button class="tab" data-tab="history"><span>История</span></button>
+    <button class="tab" data-tab="games"><span>Игры</span></button>
+    <button class="tab" data-tab="shop"><span>Магазин</span></button>
+    <button class="tab" id="tab-more"><span>Ещё</span></button>
+  </nav>
+</section>
+
+<div id="modal-root"></div>
+<div id="toasts" class="toasts"></div>
+
+<script>
+window.CB_CONFIG = {
+  url: "",
+  anonKey: ""
+};
+
+</script>
+<script>
+(function (global) {
+  'use strict';
+
+  const TRANSLIT = {
+    а:'A',б:'B',в:'V',г:'G',д:'D',е:'E',ё:'E',ж:'ZH',з:'Z',и:'I',й:'I',к:'K',л:'L',м:'M',
+    н:'N',о:'O',п:'P',р:'R',с:'S',т:'T',у:'U',ф:'F',х:'KH',ц:'TS',ч:'CH',ш:'SH',щ:'SHCH',
+    ъ:'',ы:'Y',ь:'',э:'E',ю:'IU',я:'IA',' ':' ','-':'-'
+  };
+
+  function translit(str) {
+    return String(str || '').toLowerCase().split('')
+      .map(ch => (ch in TRANSLIT ? TRANSLIT[ch] : /[a-z0-9 \-]/.test(ch) ? ch.toUpperCase() : ''))
+      .join('').replace(/\s+/g, ' ').trim().toUpperCase();
+  }
+
+  function normalizePhone(raw) {
+    let d = String(raw || '').replace(/\D/g, '');
+    if (d.length === 11 && (d[0] === '8' || d[0] === '7')) d = '7' + d.slice(1);
+    else if (d.length === 10 && d[0] === '9') d = '7' + d;
+    if (!/^7[3489]\d{9}$/.test(d)) return null;
+    return '+' + d;
+  }
+
+  function prettyPhone(p) {
+    const d = String(p || '').replace(/\D/g, '');
+    if (d.length !== 11) return p || '';
+    return `+7 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}`;
+  }
+
+  function isEmail(v) { return /^[^\s@]+@[^\s@]+\.[a-zA-Zа-яА-Я]{2,}$/.test(String(v || '').trim()); }
+
+  function luhnCheckDigit(num15) {
+    let sum = 0, dbl = true;
+    for (let i = num15.length - 1; i >= 0; i--) {
+      let d = +num15[i];
+      if (dbl) { d *= 2; if (d > 9) d -= 9; }
+      dbl = !dbl; sum += d;
+    }
+    return (10 - (sum % 10)) % 10;
+  }
+
+  const BIN = '4200';
+
+  function genCardNumber() {
+    let body = BIN;
+    while (body.length < 15) body += Math.floor(Math.random() * 10);
+    return body + luhnCheckDigit(body);
+  }
+
+  function genAccount() {
+    let a = '40817810';
+    while (a.length < 20) a += Math.floor(Math.random() * 10);
+    return a;
+  }
+
+  function genExpiry(years) {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() + (years || 5));
+    return String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getFullYear()).slice(2);
+  }
+
+  function genCvv() { return String(Math.floor(Math.random() * 900) + 100); }
+
+  function uid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  async function hashPin(phone, pin) {
+    const data = new TextEncoder().encode('chekunec:' + phone + ':' + pin);
+    const buf = await crypto.subtle.digest('SHA-256', data);
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  function newCardFor(first, last) {
+    return {
+      card_number: genCardNumber(),
+      card_holder: translit(first) + ' ' + translit(last),
+      card_exp: genExpiry(5),
+      card_cvv: genCvv(),
+      account_number: genAccount()
+    };
+  }
+
+  const WELCOME_BONUS = 500;
+  const PENALTY_RATE = 25;
+  const CREDIT_PLANS = [
+    { days: 1,  rate: 5,  label: '1 день' },
+    { days: 3,  rate: 10, label: '3 дня' },
+    { days: 7,  rate: 18, label: '7 дней' },
+    { days: 30, rate: 35, label: '30 дней' }
+  ];
+  const CREDIT_LIMIT = 50000;
+  const CREDIT_LIMIT_VIP = 150000;
+
+  const OWNER = { first: 'Сергей', last: 'Крюков' };
+
+  const ROLES = {
+    client: { label: 'Клиент', mark: '' },
+    developer: { label: 'Разработчик', mark: 'разработчик' },
+    admin: { label: 'Администратор', mark: 'админ' }
+  };
+
+  const SKINS = {
+    chekushka: { name: 'Чекушка', css: 'linear-gradient(135deg,#17301f 0%,#4a7c4e 60%,#9dc08b 100%)' },
+    goldbank:  { name: 'Золото банка', css: 'linear-gradient(135deg,#3b2f10 0%,#9c7c2a 55%,#e0c979 100%)' },
+    base:     { name: 'Классическая', css: 'linear-gradient(135deg,#232a3d 0%,#3b4a72 100%)' },
+    graphite: { name: 'Графит', css: 'linear-gradient(135deg,#1b1e26 0%,#3c424f 100%)' },
+    azure:    { name: 'Лазурь', css: 'linear-gradient(135deg,#1c3350 0%,#4a7ba8 100%)' },
+    sand:     { name: 'Песок', css: 'linear-gradient(135deg,#3a3226 0%,#a68f68 100%)' },
+    emerald:  { name: 'Изумруд', css: 'linear-gradient(135deg,#16332b 0%,#3f7a63 100%)' },
+    platinum: { name: 'Платина', css: 'linear-gradient(135deg,#2d3138 0%,#8d95a3 100%)' }
+  };
+
+  const AVATAR_COLORS = {
+    indigo: { name: 'Индиго', css: '#5c6bc0' },
+    teal:   { name: 'Бирюзовый', css: '#4e9a8a' },
+    slate:  { name: 'Графитовый', css: '#5a6474' },
+    plum:   { name: 'Сливовый', css: '#7a5c78' },
+    clay:   { name: 'Терракота', css: '#a1705a' },
+    moss:   { name: 'Мох', css: '#6a7d54' }
+  };
+
+  const SHOP = [
+    { id: 'skin_graphite', kind: 'skin', value: 'graphite', price: 2500, group: 'Оформление карты',
+      name: 'Оформление «Графит»', desc: 'Тёмно-серая карта' },
+    { id: 'skin_azure', kind: 'skin', value: 'azure', price: 3000, group: 'Оформление карты',
+      name: 'Оформление «Лазурь»', desc: 'Спокойная синяя карта' },
+    { id: 'skin_emerald', kind: 'skin', value: 'emerald', price: 3500, group: 'Оформление карты',
+      name: 'Оформление «Изумруд»', desc: 'Глубокий зелёный' },
+    { id: 'skin_sand', kind: 'skin', value: 'sand', price: 4000, group: 'Оформление карты',
+      name: 'Оформление «Песок»', desc: 'Тёплый бежевый' },
+    { id: 'skin_chekushka', kind: 'skin', value: 'chekushka', price: 6000, group: 'Оформление карты',
+      name: 'Оформление «Чекушка»', desc: 'Бутылочное стекло — фирменный стиль банка' },
+    { id: 'skin_platinum', kind: 'skin', value: 'platinum', price: 9000, group: 'Оформление карты',
+      name: 'Оформление «Платина»', desc: 'Премиальная карта банка' },
+
+    { id: 'title_lucky', kind: 'title', value: 'Везунчик', price: 1500, group: 'Титулы',
+      name: 'Титул «Везунчик»', desc: 'Подпись у имени в профиле и рейтинге' },
+    { id: 'title_chekushkin', kind: 'title', value: 'Чекушкин', price: 2500, group: 'Титулы',
+      name: 'Титул «Чекушкин»', desc: 'Для своих' },
+    { id: 'title_vip', kind: 'title', value: 'VIP-клиент', price: 4000, group: 'Титулы',
+      name: 'Титул «VIP-клиент»', desc: 'Подпись у имени' },
+    { id: 'title_magnat', kind: 'title', value: 'Магнат', price: 12000, group: 'Титулы',
+      name: 'Титул «Магнат»', desc: 'Для очень богатых' },
+    { id: 'title_legend', kind: 'title', value: 'Легенда банка', price: 25000, group: 'Титулы',
+      name: 'Титул «Легенда банка»', desc: 'Самый редкий титул' },
+
+    { id: 'case', kind: 'case', price: 1000, group: 'Ящики и удача',
+      name: 'Ящик чекушек', desc: 'Открывается сразу: от пустого до крупного выигрыша и редкого оформления' },
+    { id: 'avatar', kind: 'avatar', price: 700, group: 'Внешний вид',
+      name: 'Цвет значка', desc: 'Свой цвет инициалов в шапке и профиле' },
+    { id: 'engraving', kind: 'engraving', price: 5000, group: 'Внешний вид',
+      name: 'Гравировка на карте', desc: 'Своя строка латиницей на лицевой стороне' },
+    { id: 'reissue', kind: 'reissue', price: 3000, group: 'Внешний вид',
+      name: 'Перевыпуск карты', desc: 'Новый номер карты и срок действия' },
+
+    { id: 'insurance', kind: 'consumable', price: 1200, group: 'Банковские услуги',
+      name: 'Страховка от просрочки', desc: 'Один раз отменяет штраф 25 процентов' },
+    { id: 'holidays', kind: 'holidays', price: 2000, group: 'Банковские услуги',
+      name: 'Кредитные каникулы', desc: 'Продлевают срок любого кредита на 3 дня' },
+    { id: 'bonus_boost', kind: 'boost', price: 1800, group: 'Банковские услуги',
+      name: 'Двойной бонус, 7 дней', desc: 'Бонус дня 100 вместо 50' },
+    { id: 'limit_up', kind: 'perk', price: 15000, group: 'Банковские услуги',
+      name: 'Повышенный кредитный лимит', desc: 'Кредиты до 150 000 навсегда' },
+    { id: 'cashback', kind: 'cashback', price: 20000, group: 'Банковские услуги',
+      name: 'Кэшбек с проигрышей', desc: 'Банк возвращает 5 процентов от проигранного в играх' }
+  ];
+
+  const SHOP_GROUPS = ['Ящики и удача', 'Оформление карты', 'Внешний вид', 'Титулы', 'Банковские услуги'];
+
+
+  class RemoteApi {
+    constructor(url, key) {
+      this.url = String(url).replace(/\/+$/, '');
+      this.key = key;
+      this.mode = 'online';
+    }
+
+    async rpc(fn, args) {
+      let res;
+      try {
+        res = await fetch(this.url + '/rest/v1/rpc/' + fn, {
+          method: 'POST',
+          headers: {
+            'apikey': this.key,
+            'Authorization': 'Bearer ' + this.key,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(args || {})
+        });
+      } catch (e) {
+        throw new Error('Нет связи с сервером банка. Проверьте интернет.');
+      }
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
+      if (!res.ok) {
+        const msg = (data && (data.message || data.hint || data.error)) || ('Ошибка сервера (' + res.status + ')');
+        throw new Error(String(msg));
+      }
+      if (data && data.error) throw new Error(data.error);
+      return data;
+    }
+
+    ping() { return this.rpc('cb_ping', {}); }
+
+    async register(f) {
+      const pin_hash = await hashPin(f.phone, f.pin);
+      const card = newCardFor(f.first, f.last);
+      return this.rpc('cb_register', {
+        p_first: f.first, p_last: f.last, p_phone: f.phone, p_email: f.email,
+        p_pin: pin_hash, p_card: card.card_number, p_holder: card.card_holder,
+        p_exp: card.card_exp, p_cvv: card.card_cvv, p_account: card.account_number,
+        p_bonus: WELCOME_BONUS
+      });
+    }
+
+    async login(phone, pin) {
+      return this.rpc('cb_login', { p_phone: phone, p_pin: await hashPin(phone, pin) });
+    }
+
+    state(token) { return this.rpc('cb_state', { p_token: token }); }
+    find(token, q) { return this.rpc('cb_find', { p_token: token, p_query: q }); }
+    transfer(token, q, amount, note) {
+      return this.rpc('cb_transfer', { p_token: token, p_query: q, p_amount: amount, p_note: note || '' });
+    }
+    game(token, g) {
+      return this.rpc('cb_game', { p_token: token, p_game: g.game, p_stake: g.stake, p_payout: g.payout, p_title: g.title });
+    }
+    creditTake(token, amount, days) { return this.rpc('cb_credit_take', { p_token: token, p_amount: amount, p_days: days }); }
+    creditPay(token, id, amount) { return this.rpc('cb_credit_pay', { p_token: token, p_credit: id, p_amount: amount }); }
+    dailyBonus(token) { return this.rpc('cb_daily_bonus', { p_token: token }); }
+    updateProfile(token, patch) { return this.rpc('cb_update_profile', { p_token: token, p_patch: patch }); }
+    async changePin(token, oldPin, newPin, phone) {
+      return this.rpc('cb_change_pin', {
+        p_token: token, p_old: await hashPin(phone, oldPin), p_new: await hashPin(phone, newPin)
+      });
+    }
+    top(token) { return this.rpc('cb_top', { p_token: token }); }
+    logout(token) { return this.rpc('cb_logout', { p_token: token }); }
+    remove(token) { return this.rpc('cb_delete_account', { p_token: token }); }
+
+    shopBuy(token, item) { return this.rpc('cb_shop_buy', { p_token: token, p_item: item }); }
+    shopEquip(token, kind, value) { return this.rpc('cb_shop_equip', { p_token: token, p_kind: kind, p_value: value }); }
+    caseOpen(token) { return this.rpc('cb_case_open', { p_token: token }); }
+    engrave(token, text) { return this.rpc('cb_engrave', { p_token: token, p_text: text }); }
+    reissue(token) { return this.rpc('cb_reissue', { p_token: token }); }
+    creditExtend(token, id) { return this.rpc('cb_credit_extend', { p_token: token, p_credit: id }); }
+
+    adminStats(token) { return this.rpc('cb_admin_stats', { p_token: token }); }
+    adminUsers(token, q) { return this.rpc('cb_admin_users', { p_token: token, p_query: q || '' }); }
+    adminIssue(token, target, amount, reason) {
+      return this.rpc('cb_admin_issue', { p_token: token, p_query: target, p_amount: amount, p_reason: reason || '' });
+    }
+    adminRole(token, target, role) { return this.rpc('cb_admin_role', { p_token: token, p_query: target, p_role: role }); }
+    adminBlock(token, target, blocked, reason) {
+      return this.rpc('cb_admin_block', { p_token: token, p_query: target, p_blocked: blocked, p_reason: reason || '' });
+    }
+    adminFeed(token) { return this.rpc('cb_admin_feed', { p_token: token }); }
+  }
+
+  const LS = 'chekunec_bank_local_v2';
+
+  class LocalApi {
+    constructor() { this.mode = 'demo'; }
+
+    db() {
+      try { return JSON.parse(localStorage.getItem(LS)) || { users: [], tx: [], credits: [] }; }
+      catch (_) { return { users: [], tx: [], credits: [] }; }
+    }
+    save(db) { localStorage.setItem(LS, JSON.stringify(db)); }
+
+    byToken(db, token) {
+      const u = db.users.find(x => x.token === token);
+      if (!u) throw new Error('Сессия истекла, войдите заново');
+      if (u.blocked) throw new Error('Счёт заблокирован. ' + (u.blocked_reason || ''));
+      return u;
+    }
+
+    push(db, user, amount, category, title, meta) {
+      user.balance = Math.round((user.balance + amount) * 100) / 100;
+      db.tx.push({
+        id: uid(), user_id: user.id, ts: new Date().toISOString(), amount,
+        category, title, balance_after: user.balance, meta: meta || {}
+      });
+    }
+
+    pub(u) {
+      const { pin_hash, token, ...rest } = u;
+      return rest;
+    }
+
+    async register(f) {
+      const db = this.db();
+      if (db.users.some(u => u.phone === f.phone)) throw new Error('Такой телефон уже зарегистрирован');
+      let card = newCardFor(f.first, f.last);
+      while (db.users.some(u => u.card_number === card.card_number)) card = newCardFor(f.first, f.last);
+      const owner = f.first === OWNER.first && f.last === OWNER.last && !db.users.some(u => u.role === 'admin');
+      const user = {
+        id: uid(), token: uid(), first_name: f.first, last_name: f.last,
+        phone: f.phone, email: f.email, pin_hash: await hashPin(f.phone, f.pin),
+        balance: 0, created_at: new Date().toISOString(), last_bonus: null,
+        role: owner ? 'admin' : 'client', blocked: false, blocked_reason: '',
+        inventory: { skins: ['base'], titles: [], insurance: 0, bonus_boost_until: null, limit_up: false,
+                     avatar: false, engraving: false, cases: 0, holidays: 0, cashback: false },
+        equipped: { skin: 'base', title: '', avatar: '' },
+        engraving: '',
+        settings: { theme: 'dark', hide_balance: false, sound: true, notify: true, public: true },
+        ...card
+      };
+      db.users.push(user);
+      this.push(db, user, WELCOME_BONUS, 'bonus', 'Приветственный бонус');
+      this.save(db);
+      return { token: user.token, user: this.pub(user) };
+    }
+
+    async login(phone, pin) {
+      const db = this.db();
+      const u = db.users.find(x => x.phone === phone);
+      if (!u) throw new Error('Клиент с таким номером не найден');
+      if (u.pin_hash !== await hashPin(phone, pin)) throw new Error('Неверный PIN-код');
+      if (u.blocked) throw new Error('Счёт заблокирован. ' + (u.blocked_reason || ''));
+      u.token = uid(); this.save(db);
+      return { token: u.token, user: this.pub(u) };
+    }
+
+    processOverdue(db, user) {
+      const now = Date.now();
+      let hit = 0;
+      db.credits.filter(c => c.user_id === user.id && c.status === 'active').forEach(c => {
+        if (new Date(c.due_at).getTime() > now) return;
+        const rest = Math.round((c.total - c.paid) * 100) / 100;
+        const insured = (user.inventory.insurance || 0) > 0;
+        const penalty = insured ? 0 : Math.round(rest * PENALTY_RATE) / 100;
+        if (insured) user.inventory.insurance--;
+        c.status = 'overdue'; c.paid = c.total; c.closed_at = new Date().toISOString(); c.penalty = penalty;
+        this.push(db, user, -rest, 'credit', 'Принудительное списание по кредиту', { credit: c.id });
+        if (penalty) this.push(db, user, -penalty, 'penalty', 'Штраф за просрочку (' + PENALTY_RATE + '%)', { credit: c.id });
+        else this.push(db, user, 0, 'shop', 'Страховка отменила штраф', { credit: c.id });
+        hit++;
+      });
+      return hit;
+    }
+
+    async state(token) {
+      const db = this.db();
+      const u = this.byToken(db, token);
+      const overdue = this.processOverdue(db, u);
+      this.save(db);
+      return {
+        user: this.pub(u),
+        transactions: db.tx.filter(t => t.user_id === u.id).sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 200),
+        credits: db.credits.filter(c => c.user_id === u.id).sort((a, b) => b.taken_at.localeCompare(a.taken_at)),
+        overdue_applied: overdue,
+        clients: db.users.length
+      };
+    }
+
+    lookup(db, q) {
+      const digits = String(q || '').replace(/\D/g, '');
+      const phone = normalizePhone(q);
+      const text = String(q || '').trim().toLowerCase();
+      return db.users.find(u => (phone && u.phone === phone) ||
+        (digits.length === 16 && u.card_number === digits) ||
+        (digits.length === 20 && u.account_number === digits) ||
+        (text.length > 2 && (u.first_name + ' ' + u.last_name).toLowerCase() === text));
+    }
+
+    async find(token, q) {
+      const db = this.db(); const me = this.byToken(db, token);
+      const t = this.lookup(db, q);
+      if (!t) throw new Error('Клиент Чекунец Банка не найден');
+      if (t.id === me.id) throw new Error('Это ваш собственный счёт');
+      return { name: t.first_name + ' ' + t.last_name[0] + '.', phone: prettyPhone(t.phone) };
+    }
+
+    async transfer(token, q, amount, note) {
+      const db = this.db(); const me = this.byToken(db, token);
+      this.processOverdue(db, me);
+      amount = Math.round(Number(amount) * 100) / 100;
+      if (!(amount > 0)) throw new Error('Некорректная сумма');
+      const to = this.lookup(db, q);
+      if (!to) throw new Error('Клиент Чекунец Банка не найден');
+      if (to.id === me.id) throw new Error('Нельзя перевести самому себе');
+      if (to.blocked) throw new Error('Счёт получателя заблокирован');
+      if (me.balance < amount) throw new Error('Недостаточно чекурублей на счёте');
+      this.push(db, me, -amount, 'transfer_out', 'Перевод — ' + to.first_name + ' ' + to.last_name,
+        { to: to.phone, note: note || '' });
+      this.push(db, to, amount, 'transfer_in', 'Перевод от ' + me.first_name + ' ' + me.last_name,
+        { from: me.phone, note: note || '' });
+      this.save(db);
+      return { ok: true, balance: me.balance, to: to.first_name + ' ' + to.last_name };
+    }
+
+    async game(token, g) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const stake = Math.max(0, Math.round(Number(g.stake) * 100) / 100);
+      const payout = Math.max(0, Math.round(Number(g.payout) * 100) / 100);
+      if (stake > 0 && u.balance < stake) throw new Error('Недостаточно чекурублей для ставки');
+      const delta = Math.round((payout - stake) * 100) / 100;
+      this.push(db, u, delta, stake > 0 ? 'game_bet' : 'game_win', g.title, { game: g.game, stake, payout });
+      let cashback = 0;
+      if (u.inventory.cashback && delta < 0) {
+        cashback = Math.round(-delta * 5) / 100;
+        this.push(db, u, cashback, 'cashback', 'Кэшбек с проигрыша', { game: g.game });
+      }
+      this.save(db);
+      return { balance: u.balance, delta, cashback };
+    }
+
+    async creditTake(token, amount, days) {
+      const db = this.db(); const u = this.byToken(db, token);
+      this.processOverdue(db, u);
+      const plan = CREDIT_PLANS.find(p => p.days === days);
+      if (!plan) throw new Error('Неизвестная программа кредитования');
+      const limit = u.inventory.limit_up ? CREDIT_LIMIT_VIP : CREDIT_LIMIT;
+      amount = Math.round(Number(amount) * 100) / 100;
+      if (!(amount >= 100 && amount <= limit)) throw new Error('Сумма кредита: от 100 до ' + limit + ' чекурублей');
+      const active = db.credits.filter(c => c.user_id === u.id && c.status === 'active');
+      if (active.length >= 3) throw new Error('Нельзя иметь больше трёх активных кредитов');
+      const total = Math.round(amount * (1 + plan.rate / 100) * 100) / 100;
+      const c = {
+        id: uid(), user_id: u.id, amount, rate: plan.rate, days: plan.days, total, paid: 0, penalty: 0,
+        taken_at: new Date().toISOString(),
+        due_at: new Date(Date.now() + plan.days * 864e5).toISOString(),
+        status: 'active'
+      };
+      db.credits.push(c);
+      this.push(db, u, amount, 'credit', 'Кредит на ' + plan.label, { credit: c.id });
+      this.save(db);
+      return { credit: c, balance: u.balance };
+    }
+
+    async creditPay(token, id, amount) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const c = db.credits.find(x => x.id === id && x.user_id === u.id);
+      if (!c || c.status !== 'active') throw new Error('Кредит не найден или уже закрыт');
+      amount = Math.round(Number(amount) * 100) / 100;
+      const rest = Math.round((c.total - c.paid) * 100) / 100;
+      if (!(amount > 0)) throw new Error('Некорректная сумма');
+      if (amount > rest) amount = rest;
+      if (u.balance < amount) throw new Error('Недостаточно чекурублей');
+      c.paid = Math.round((c.paid + amount) * 100) / 100;
+      if (c.paid >= c.total - 0.001) { c.status = 'closed'; c.closed_at = new Date().toISOString(); }
+      this.push(db, u, -amount, 'credit_pay', c.status === 'closed' ? 'Кредит погашен полностью' : 'Платёж по кредиту', { credit: c.id });
+      this.save(db);
+      return { credit: c, balance: u.balance };
+    }
+
+    async dailyBonus(token) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const today = new Date().toISOString().slice(0, 10);
+      if (u.last_bonus === today) throw new Error('Бонус сегодня уже получен');
+      u.last_bonus = today;
+      const boosted = u.inventory.bonus_boost_until && new Date(u.inventory.bonus_boost_until) > new Date();
+      const sum = boosted ? 100 : 50;
+      this.push(db, u, sum, 'bonus', boosted ? 'Ежедневный бонус ×2' : 'Ежедневный бонус клиента');
+      this.save(db);
+      return { amount: sum, balance: u.balance };
+    }
+
+    async updateProfile(token, patch) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (patch.email) u.email = patch.email;
+      if (patch.phone) {
+        if (db.users.some(x => x.phone === patch.phone && x.id !== u.id)) throw new Error('Этот телефон уже занят');
+        u.phone = patch.phone;
+      }
+      if (patch.settings) u.settings = { ...u.settings, ...patch.settings };
+      this.save(db);
+      return { user: this.pub(u) };
+    }
+
+    async changePin(token, oldPin, newPin) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (u.pin_hash !== await hashPin(u.phone, oldPin)) throw new Error('Текущий PIN неверен');
+      u.pin_hash = await hashPin(u.phone, newPin);
+      this.save(db);
+      return { ok: true };
+    }
+
+    async top(token) {
+      const db = this.db(); this.byToken(db, token);
+      return db.users.filter(u => !u.blocked && (!u.settings || u.settings.public !== false))
+        .sort((a, b) => b.balance - a.balance).slice(0, 10)
+        .map(u => ({ name: u.first_name + ' ' + u.last_name[0] + '.', balance: u.balance, title: u.equipped.title || '', role: u.role }));
+    }
+
+    async shopBuy(token, itemId) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const item = SHOP.find(i => i.id === itemId);
+      if (!item) throw new Error('Товар не найден');
+      const inv = u.inventory;
+      if (item.kind === 'skin' && inv.skins.includes(item.value)) throw new Error('Скин уже куплен');
+      if (item.kind === 'title' && inv.titles.includes(item.value)) throw new Error('Титул уже куплен');
+      if (item.kind === 'perk' && inv.limit_up) throw new Error('Лимит уже повышен');
+      if (item.kind === 'cashback' && inv.cashback) throw new Error('Кэшбек уже подключён');
+      if (item.kind === 'engraving' && inv.engraving) throw new Error('Гравировка уже куплена');
+      if (item.kind === 'avatar' && inv.avatar) throw new Error('Уже куплено');
+      if (u.balance < item.price) throw new Error('Недостаточно чекурублей');
+      if (item.kind === 'skin') inv.skins.push(item.value);
+      if (item.kind === 'title') inv.titles.push(item.value);
+      if (item.kind === 'perk') inv.limit_up = true;
+      if (item.kind === 'cashback') inv.cashback = true;
+      if (item.kind === 'engraving') inv.engraving = true;
+      if (item.kind === 'consumable') inv.insurance = (inv.insurance || 0) + 1;
+      if (item.kind === 'holidays') inv.holidays = (inv.holidays || 0) + 1;
+      if (item.kind === 'case') inv.cases = (inv.cases || 0) + 1;
+      if (item.kind === 'reissue') {
+        let card = newCardFor(u.first_name, u.last_name);
+        while (db.users.some(x => x.card_number === card.card_number)) card = newCardFor(u.first_name, u.last_name);
+        u.card_number = card.card_number; u.card_exp = card.card_exp; u.card_cvv = card.card_cvv;
+      }
+      if (item.kind === 'boost') {
+        const base = inv.bonus_boost_until && new Date(inv.bonus_boost_until) > new Date()
+          ? new Date(inv.bonus_boost_until).getTime() : Date.now();
+        inv.bonus_boost_until = new Date(base + 7 * 864e5).toISOString();
+      }
+      this.push(db, u, -item.price, 'shop', 'Покупка: ' + item.name, { item: item.id });
+      this.save(db);
+      return { balance: u.balance, user: this.pub(u) };
+    }
+
+    async caseOpen(token) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (!(u.inventory.cases > 0)) throw new Error('Ящиков нет — купите в магазине');
+      u.inventory.cases--;
+      const roll = Math.random() * 100;
+      let prize;
+      if (roll < 1 && !u.inventory.skins.includes('goldbank')) prize = { skin: 'goldbank', amount: 0 };
+      else if (roll < 21) prize = { amount: 0 };
+      else if (roll < 46) prize = { amount: 200 };
+      else if (roll < 66) prize = { amount: 500 };
+      else if (roll < 81) prize = { amount: 1000 };
+      else if (roll < 91) prize = { amount: 2500 };
+      else if (roll < 98) prize = { amount: 5000 };
+      else prize = { amount: 10000 };
+      if (prize.skin) u.inventory.skins.push(prize.skin);
+      const title = prize.skin ? 'Ящик чекушек: оформление «Золото банка»'
+        : prize.amount ? 'Ящик чекушек: выигрыш' : 'Ящик чекушек: пусто';
+      this.push(db, u, prize.amount || 0, 'case', title, {});
+      this.save(db);
+      return { prize, balance: u.balance, user: this.pub(u) };
+    }
+
+    async engrave(token, text) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (!u.inventory.engraving) throw new Error('Гравировка не куплена');
+      const clean = String(text || '').toUpperCase().replace(/[^A-Z0-9 .\-]/g, '').slice(0, 16).trim();
+      u.engraving = clean;
+      this.save(db);
+      return { user: this.pub(u) };
+    }
+
+    async reissue(token) {
+      const db = this.db(); const u = this.byToken(db, token);
+      let card = newCardFor(u.first_name, u.last_name);
+      while (db.users.some(x => x.card_number === card.card_number)) card = newCardFor(u.first_name, u.last_name);
+      u.card_number = card.card_number; u.card_exp = card.card_exp; u.card_cvv = card.card_cvv;
+      this.save(db);
+      return { user: this.pub(u) };
+    }
+
+    async creditExtend(token, id) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (!(u.inventory.holidays > 0)) throw new Error('Кредитных каникул нет — купите в магазине');
+      const c = db.credits.find(x => x.id === id && x.user_id === u.id);
+      if (!c || c.status !== 'active') throw new Error('Кредит не найден или уже закрыт');
+      u.inventory.holidays--;
+      c.due_at = new Date(new Date(c.due_at).getTime() + 3 * 864e5).toISOString();
+      c.days += 3;
+      this.push(db, u, 0, 'credit', 'Кредитные каникулы: срок продлён на 3 дня', { credit: c.id });
+      this.save(db);
+      return { credit: c };
+    }
+
+    async shopEquip(token, kind, value) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const inv = u.inventory;
+      if (kind === 'skin' && value !== 'base' && !inv.skins.includes(value)) throw new Error('Скин не куплен');
+      if (kind === 'title' && value && !inv.titles.includes(value)) throw new Error('Титул не куплен');
+      if (kind === 'avatar' && value && !inv.avatar) throw new Error('Цвет значка не куплен');
+      u.equipped[kind] = value;
+      this.save(db);
+      return { user: this.pub(u) };
+    }
+
+    admin(db, token, allowDev) {
+      const u = this.byToken(db, token);
+      if (u.role !== 'admin' && !(allowDev && u.role === 'developer')) throw new Error('Недостаточно прав');
+      return u;
+    }
+
+    async adminStats(token) {
+      const db = this.db(); this.admin(db, token, true);
+      const sum = arr => Math.round(arr.reduce((s, x) => s + x, 0) * 100) / 100;
+      const day = 864e5, now = Date.now();
+      const games = db.tx.filter(t => t.category.startsWith('game'));
+      const regs = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now - i * day).toISOString().slice(0, 10);
+        regs.push({ day: d, count: db.users.filter(u => u.created_at.slice(0, 10) === d).length });
+      }
+      return {
+        clients: db.users.length,
+        blocked: db.users.filter(u => u.blocked).length,
+        admins: db.users.filter(u => u.role === 'admin').length,
+        developers: db.users.filter(u => u.role === 'developer').length,
+        money: sum(db.users.map(u => u.balance)),
+        debtors: db.users.filter(u => u.balance < 0).length,
+        tx_count: db.tx.length,
+        turnover_24h: sum(db.tx.filter(t => now - new Date(t.ts) < day).map(t => Math.abs(t.amount))),
+        transfers: db.tx.filter(t => t.category === 'transfer_out').length,
+        transfers_sum: sum(db.tx.filter(t => t.category === 'transfer_out').map(t => -t.amount)),
+        credits_active: db.credits.filter(c => c.status === 'active').length,
+        credits_overdue: db.credits.filter(c => c.status === 'overdue').length,
+        credits_sum: sum(db.credits.map(c => c.amount)),
+        games_count: games.length,
+        games_profit: -sum(games.map(t => t.amount)),
+        shop_sum: sum(db.tx.filter(t => t.category === 'shop').map(t => -t.amount)),
+        issued: sum(db.tx.filter(t => t.category === 'emission').map(t => t.amount)),
+        registrations: regs,
+        top: db.users.slice().sort((a, b) => b.balance - a.balance).slice(0, 5)
+          .map(u => ({ name: u.first_name + ' ' + u.last_name, balance: u.balance }))
+      };
+    }
+
+    async adminUsers(token, q) {
+      const db = this.db(); this.admin(db, token, true);
+      const s = String(q || '').trim().toLowerCase();
+      return db.users
+        .filter(u => !s || (u.first_name + ' ' + u.last_name).toLowerCase().includes(s) ||
+          u.phone.includes(s.replace(/\D/g, '')) || u.card_number.includes(s.replace(/\D/g, '')) ||
+          u.email.toLowerCase().includes(s))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, 100)
+        .map(u => ({
+          id: u.id, first_name: u.first_name, last_name: u.last_name, phone: u.phone, email: u.email,
+          card_number: u.card_number, balance: u.balance, role: u.role, blocked: u.blocked,
+          blocked_reason: u.blocked_reason, created_at: u.created_at,
+          tx_count: db.tx.filter(t => t.user_id === u.id).length,
+          credits: db.credits.filter(c => c.user_id === u.id && c.status === 'active').length,
+          title: u.equipped.title || ''
+        }));
+    }
+
+    async adminIssue(token, target, amount, reason) {
+      const db = this.db(); const me = this.admin(db, token);
+      const t = this.lookup(db, target);
+      if (!t) throw new Error('Клиент не найден');
+      amount = Math.round(Number(amount) * 100) / 100;
+      if (!amount) throw new Error('Некорректная сумма');
+      this.push(db, t, amount, 'emission',
+        (amount > 0 ? 'Начисление от банка' : 'Списание банком') + (reason ? ': ' + reason : ''),
+        { by: me.phone });
+      this.save(db);
+      return { balance: t.balance, name: t.first_name + ' ' + t.last_name };
+    }
+
+    async adminRole(token, target, role) {
+      const db = this.db(); const me = this.admin(db, token);
+      if (!ROLES[role]) throw new Error('Неизвестная роль');
+      const t = this.lookup(db, target);
+      if (!t) throw new Error('Клиент не найден');
+      if (t.id === me.id) throw new Error('Нельзя изменить собственную роль');
+      t.role = role;
+      this.save(db);
+      return { name: t.first_name + ' ' + t.last_name, role };
+    }
+
+    async adminBlock(token, target, blocked, reason) {
+      const db = this.db(); const me = this.admin(db, token);
+      const t = this.lookup(db, target);
+      if (!t) throw new Error('Клиент не найден');
+      if (t.id === me.id) throw new Error('Нельзя заблокировать самого себя');
+      if (t.role === 'admin') throw new Error('Нельзя заблокировать администратора');
+      t.blocked = !!blocked;
+      t.blocked_reason = blocked ? (reason || 'Нарушение правил банка') : '';
+      if (blocked) t.token = null;
+      this.save(db);
+      return { name: t.first_name + ' ' + t.last_name, blocked: t.blocked };
+    }
+
+    async adminFeed(token) {
+      const db = this.db(); this.admin(db, token, true);
+      const names = {};
+      db.users.forEach(u => names[u.id] = u.first_name + ' ' + u.last_name);
+      return db.tx.slice().sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 40)
+        .map(t => ({ ts: t.ts, who: names[t.user_id] || '—', title: t.title, amount: t.amount, category: t.category }));
+    }
+
+    async logout(token) {
+      const db = this.db();
+      const u = db.users.find(x => x.token === token);
+      if (u) { u.token = null; this.save(db); }
+      return { ok: true };
+    }
+
+    async remove(token) {
+      const db = this.db(); const u = this.byToken(db, token);
+      db.users = db.users.filter(x => x.id !== u.id);
+      db.tx = db.tx.filter(t => t.user_id !== u.id);
+      db.credits = db.credits.filter(c => c.user_id !== u.id);
+      this.save(db);
+      return { ok: true };
+    }
+  }
+
+  function readOverride() {
+    try { return JSON.parse(localStorage.getItem('cb_server')) || null; } catch (_) { return null; }
+  }
+  function writeOverride(cfg) {
+    if (cfg) localStorage.setItem('cb_server', JSON.stringify(cfg));
+    else localStorage.removeItem('cb_server');
+  }
+  function createApi() {
+    const ov = readOverride();
+    const cfg = (ov && ov.url && ov.anonKey) ? ov : (global.CB_CONFIG || {});
+    if (cfg.url && cfg.anonKey) return new RemoteApi(cfg.url, cfg.anonKey);
+    return new LocalApi();
+  }
+
+  global.CB = {
+    createApi, readOverride, writeOverride, RemoteApi, LocalApi,
+    utils: { translit, normalizePhone, prettyPhone, isEmail, luhnCheckDigit, uid },
+    consts: { WELCOME_BONUS, CREDIT_PLANS, PENALTY_RATE, CREDIT_LIMIT, CREDIT_LIMIT_VIP,
+              SHOP, SHOP_GROUPS, SKINS, AVATAR_COLORS, ROLES, OWNER }
+  };
+})(window);
+
+</script>
+<script>
 (function () {
   'use strict';
 
@@ -2438,3 +3600,5 @@
 
   document.addEventListener('DOMContentLoaded', boot);
 })();
+
+</script>
