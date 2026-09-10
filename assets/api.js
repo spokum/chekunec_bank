@@ -1,11 +1,5 @@
-/* Чекунец Банк — слой доступа к данным.
-   Два одинаковых по интерфейсу адаптера:
-     • SupabaseApi — настоящий онлайн-банк (общая база, переводы между людьми)
-     • DemoApi     — офлайн-демо в localStorage, если сервер не настроен      */
 (function (global) {
   'use strict';
-
-  /* ---------------- общие утилиты ---------------- */
 
   const TRANSLIT = {
     а:'A',б:'B',в:'V',г:'G',д:'D',е:'E',ё:'E',ж:'ZH',з:'Z',и:'I',й:'I',к:'K',л:'L',м:'M',
@@ -19,7 +13,6 @@
       .join('').replace(/\s+/g, ' ').trim().toUpperCase();
   }
 
-  /** Телефон → строгий формат +7XXXXXXXXXX (или null). */
   function normalizePhone(raw) {
     let d = String(raw || '').replace(/\D/g, '');
     if (d.length === 11 && (d[0] === '8' || d[0] === '7')) d = '7' + d.slice(1);
@@ -36,7 +29,6 @@
 
   function isEmail(v) { return /^[^\s@]+@[^\s@]+\.[a-zA-Zа-яА-Я]{2,}$/.test(String(v || '').trim()); }
 
-  /** Контрольная цифра Луна — номер карты проходит настоящую проверку. */
   function luhnCheckDigit(num15) {
     let sum = 0, dbl = true;
     for (let i = num15.length - 1; i >= 0; i--) {
@@ -47,7 +39,7 @@
     return (10 - (sum % 10)) % 10;
   }
 
-  const BIN = '4200'; // «БИН» Чекунец Банка
+  const BIN = '4200';
 
   function genCardNumber() {
     let body = BIN;
@@ -93,17 +85,49 @@
   }
 
   const WELCOME_BONUS = 500;
+  const PENALTY_RATE = 25;
   const CREDIT_PLANS = [
     { days: 1,  rate: 5,  label: '1 день' },
     { days: 3,  rate: 10, label: '3 дня' },
     { days: 7,  rate: 18, label: '7 дней' },
     { days: 30, rate: 35, label: '30 дней' }
   ];
-  const PENALTY_RATE = 25; // штраф при просрочке, % от остатка долга
+  const CREDIT_LIMIT = 50000;
+  const CREDIT_LIMIT_VIP = 150000;
 
-  /* ---------------- адаптер: Supabase (онлайн) ---------------- */
+  const OWNER = { first: 'Сергей', last: 'Крюков' };
 
-  class SupabaseApi {
+  const ROLES = {
+    client: { label: 'Клиент', icon: '👤' },
+    developer: { label: 'Разработчик', icon: '🛠' },
+    admin: { label: 'Администратор', icon: '👑' }
+  };
+
+  const SKINS = {
+    base:  { name: 'Классическая', css: 'linear-gradient(135deg,#2a1e6b 0%,#5b3ff0 45%,#0f7f6a 100%)' },
+    neon:  { name: 'Неон', css: 'linear-gradient(135deg,#12002e 0%,#ff2bd1 55%,#00e5ff 100%)' },
+    gold:  { name: 'Золотая', css: 'linear-gradient(135deg,#4a3405 0%,#d4a017 45%,#fff0b0 100%)' },
+    ice:   { name: 'Лёд', css: 'linear-gradient(135deg,#0b2b3a 0%,#3aa7d9 50%,#d7f4ff 100%)' },
+    blood: { name: 'Багровая', css: 'linear-gradient(135deg,#2b0410 0%,#c0143c 55%,#ff8b6b 100%)' },
+    dark:  { name: 'Карбон', css: 'linear-gradient(135deg,#0a0a0d 0%,#2b2f3a 55%,#5a6072 100%)' }
+  };
+
+  const SHOP = [
+    { id: 'skin_neon',  kind: 'skin',  value: 'neon',  price: 2500,  icon: '🌈', name: 'Скин «Неон»', desc: 'Розово-голубая карта' },
+    { id: 'skin_ice',   kind: 'skin',  value: 'ice',   price: 3000,  icon: '🧊', name: 'Скин «Лёд»', desc: 'Ледяная карта' },
+    { id: 'skin_blood', kind: 'skin',  value: 'blood', price: 3500,  icon: '🩸', name: 'Скин «Багровая»', desc: 'Тёмно-красная карта' },
+    { id: 'skin_dark',  kind: 'skin',  value: 'dark',  price: 4000,  icon: '🖤', name: 'Скин «Карбон»', desc: 'Матовая чёрная карта' },
+    { id: 'skin_gold',  kind: 'skin',  value: 'gold',  price: 9000,  icon: '🪙', name: 'Скин «Золотая»', desc: 'Самая дорогая карта банка' },
+    { id: 'title_lucky', kind: 'title', value: 'Везунчик',   price: 1500, icon: '🍀', name: 'Титул «Везунчик»', desc: 'Показывается в профиле и рейтинге' },
+    { id: 'title_vip',   kind: 'title', value: 'VIP-клиент', price: 4000, icon: '💎', name: 'Титул «VIP-клиент»', desc: 'Статус у имени' },
+    { id: 'title_magnat',kind: 'title', value: 'Магнат',     price: 12000, icon: '🎩', name: 'Титул «Магнат»', desc: 'Для очень богатых' },
+    { id: 'insurance',  kind: 'consumable', price: 1200, icon: '🛡', name: 'Страховка от просрочки', desc: 'Отменяет штраф 25% один раз' },
+    { id: 'bonus_boost', kind: 'boost', price: 1800, icon: '⚡', name: 'Двойной бонус, 7 дней', desc: 'Бонус дня 100 ₡ вместо 50' },
+    { id: 'limit_up',   kind: 'perk',  price: 15000, icon: '📈', name: 'Повышенный кредитный лимит', desc: 'Кредиты до 150 000 ₡ навсегда' },
+    { id: 'emoji',      kind: 'emoji', price: 700,  icon: '😎', name: 'Смайл вместо инициалов', desc: 'Свой значок в шапке и профиле' }
+  ];
+
+  class RemoteApi {
     constructor(url, key) {
       this.url = String(url).replace(/\/+$/, '');
       this.key = key;
@@ -130,7 +154,7 @@
       try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
       if (!res.ok) {
         const msg = (data && (data.message || data.hint || data.error)) || ('Ошибка сервера (' + res.status + ')');
-        throw new Error(String(msg).replace(/^ERR:\s*/, ''));
+        throw new Error(String(msg));
       }
       if (data && data.error) throw new Error(data.error);
       return data;
@@ -173,13 +197,25 @@
     top(token) { return this.rpc('cb_top', { p_token: token }); }
     logout(token) { return this.rpc('cb_logout', { p_token: token }); }
     remove(token) { return this.rpc('cb_delete_account', { p_token: token }); }
+
+    shopBuy(token, item) { return this.rpc('cb_shop_buy', { p_token: token, p_item: item }); }
+    shopEquip(token, kind, value) { return this.rpc('cb_shop_equip', { p_token: token, p_kind: kind, p_value: value }); }
+
+    adminStats(token) { return this.rpc('cb_admin_stats', { p_token: token }); }
+    adminUsers(token, q) { return this.rpc('cb_admin_users', { p_token: token, p_query: q || '' }); }
+    adminIssue(token, target, amount, reason) {
+      return this.rpc('cb_admin_issue', { p_token: token, p_query: target, p_amount: amount, p_reason: reason || '' });
+    }
+    adminRole(token, target, role) { return this.rpc('cb_admin_role', { p_token: token, p_query: target, p_role: role }); }
+    adminBlock(token, target, blocked, reason) {
+      return this.rpc('cb_admin_block', { p_token: token, p_query: target, p_blocked: blocked, p_reason: reason || '' });
+    }
+    adminFeed(token) { return this.rpc('cb_admin_feed', { p_token: token }); }
   }
 
-  /* ---------------- адаптер: демо (localStorage) ---------------- */
+  const LS = 'chekunec_bank_local_v2';
 
-  const LS = 'chekunec_bank_demo_v1';
-
-  class DemoApi {
+  class LocalApi {
     constructor() { this.mode = 'demo'; }
 
     db() {
@@ -187,11 +223,14 @@
       catch (_) { return { users: [], tx: [], credits: [] }; }
     }
     save(db) { localStorage.setItem(LS, JSON.stringify(db)); }
+
     byToken(db, token) {
       const u = db.users.find(x => x.token === token);
       if (!u) throw new Error('Сессия истекла, войдите заново');
+      if (u.blocked) throw new Error('Счёт заблокирован. ' + (u.blocked_reason || ''));
       return u;
     }
+
     push(db, user, amount, category, title, meta) {
       user.balance = Math.round((user.balance + amount) * 100) / 100;
       db.tx.push({
@@ -200,15 +239,24 @@
       });
     }
 
+    pub(u) {
+      const { pin_hash, token, ...rest } = u;
+      return rest;
+    }
+
     async register(f) {
       const db = this.db();
       if (db.users.some(u => u.phone === f.phone)) throw new Error('Такой телефон уже зарегистрирован');
       let card = newCardFor(f.first, f.last);
       while (db.users.some(u => u.card_number === card.card_number)) card = newCardFor(f.first, f.last);
+      const owner = f.first === OWNER.first && f.last === OWNER.last && !db.users.some(u => u.role === 'admin');
       const user = {
         id: uid(), token: uid(), first_name: f.first, last_name: f.last,
         phone: f.phone, email: f.email, pin_hash: await hashPin(f.phone, f.pin),
         balance: 0, created_at: new Date().toISOString(), last_bonus: null,
+        role: owner ? 'admin' : 'client', blocked: false, blocked_reason: '',
+        inventory: { skins: ['base'], titles: [], insurance: 0, bonus_boost_until: null, limit_up: false, emoji: '' },
+        equipped: { skin: 'base', title: '', emoji: '' },
         settings: { theme: 'dark', hide_balance: false, sound: true, notify: true, public: true },
         ...card
       };
@@ -223,30 +271,26 @@
       const u = db.users.find(x => x.phone === phone);
       if (!u) throw new Error('Клиент с таким номером не найден');
       if (u.pin_hash !== await hashPin(phone, pin)) throw new Error('Неверный PIN-код');
+      if (u.blocked) throw new Error('Счёт заблокирован. ' + (u.blocked_reason || ''));
       u.token = uid(); this.save(db);
       return { token: u.token, user: this.pub(u) };
     }
 
-    pub(u) {
-      const { pin_hash, token, ...rest } = u;
-      return rest;
-    }
-
-    /** Просрочка: списываем остаток долга + штраф, баланс может уйти в минус. */
     processOverdue(db, user) {
       const now = Date.now();
       let hit = 0;
-      db.credits.filter(c => c.user_id === user.id && c.status === 'active')
-        .forEach(c => {
-          if (new Date(c.due_at).getTime() > now) return;
-          const rest = Math.round((c.total - c.paid) * 100) / 100;
-          const penalty = Math.round(rest * PENALTY_RATE) / 100;
-          c.status = 'overdue'; c.paid = c.total; c.closed_at = new Date().toISOString();
-          c.penalty = penalty;
-          this.push(db, user, -rest, 'credit', 'Принудительное списание по кредиту', { credit: c.id });
-          this.push(db, user, -penalty, 'penalty', 'Штраф за просрочку (' + PENALTY_RATE + '%)', { credit: c.id });
-          hit++;
-        });
+      db.credits.filter(c => c.user_id === user.id && c.status === 'active').forEach(c => {
+        if (new Date(c.due_at).getTime() > now) return;
+        const rest = Math.round((c.total - c.paid) * 100) / 100;
+        const insured = (user.inventory.insurance || 0) > 0;
+        const penalty = insured ? 0 : Math.round(rest * PENALTY_RATE) / 100;
+        if (insured) user.inventory.insurance--;
+        c.status = 'overdue'; c.paid = c.total; c.closed_at = new Date().toISOString(); c.penalty = penalty;
+        this.push(db, user, -rest, 'credit', 'Принудительное списание по кредиту', { credit: c.id });
+        if (penalty) this.push(db, user, -penalty, 'penalty', 'Штраф за просрочку (' + PENALTY_RATE + '%)', { credit: c.id });
+        else this.push(db, user, 0, 'shop', 'Страховка отменила штраф', { credit: c.id });
+        hit++;
+      });
       return hit;
     }
 
@@ -267,9 +311,11 @@
     lookup(db, q) {
       const digits = String(q || '').replace(/\D/g, '');
       const phone = normalizePhone(q);
+      const text = String(q || '').trim().toLowerCase();
       return db.users.find(u => (phone && u.phone === phone) ||
         (digits.length === 16 && u.card_number === digits) ||
-        (digits.length === 20 && u.account_number === digits));
+        (digits.length === 20 && u.account_number === digits) ||
+        (text.length > 2 && (u.first_name + ' ' + u.last_name).toLowerCase() === text));
     }
 
     async find(token, q) {
@@ -288,14 +334,14 @@
       const to = this.lookup(db, q);
       if (!to) throw new Error('Клиент Чекунец Банка не найден');
       if (to.id === me.id) throw new Error('Нельзя перевести самому себе');
+      if (to.blocked) throw new Error('Счёт получателя заблокирован');
       if (me.balance < amount) throw new Error('Недостаточно чекурублей на счёте');
-      const other = db.users.find(u => u.id === to.id);
-      this.push(db, me, -amount, 'transfer_out', 'Перевод — ' + other.first_name + ' ' + other.last_name,
-        { to: other.phone, note: note || '' });
-      this.push(db, other, amount, 'transfer_in', 'Перевод от ' + me.first_name + ' ' + me.last_name,
+      this.push(db, me, -amount, 'transfer_out', 'Перевод — ' + to.first_name + ' ' + to.last_name,
+        { to: to.phone, note: note || '' });
+      this.push(db, to, amount, 'transfer_in', 'Перевод от ' + me.first_name + ' ' + me.last_name,
         { from: me.phone, note: note || '' });
       this.save(db);
-      return { ok: true, balance: me.balance, to: other.first_name + ' ' + other.last_name };
+      return { ok: true, balance: me.balance, to: to.first_name + ' ' + to.last_name };
     }
 
     async game(token, g) {
@@ -314,13 +360,14 @@
       this.processOverdue(db, u);
       const plan = CREDIT_PLANS.find(p => p.days === days);
       if (!plan) throw new Error('Неизвестная программа кредитования');
+      const limit = u.inventory.limit_up ? CREDIT_LIMIT_VIP : CREDIT_LIMIT;
       amount = Math.round(Number(amount) * 100) / 100;
-      if (!(amount >= 100 && amount <= 50000)) throw new Error('Сумма кредита: от 100 до 50 000 ₡');
+      if (!(amount >= 100 && amount <= limit)) throw new Error('Сумма кредита: от 100 до ' + limit + ' ₡');
       const active = db.credits.filter(c => c.user_id === u.id && c.status === 'active');
       if (active.length >= 3) throw new Error('Нельзя иметь больше трёх активных кредитов');
       const total = Math.round(amount * (1 + plan.rate / 100) * 100) / 100;
       const c = {
-        id: uid(), user_id: u.id, amount, rate: plan.rate, days: plan.days, total, paid: 0,
+        id: uid(), user_id: u.id, amount, rate: plan.rate, days: plan.days, total, paid: 0, penalty: 0,
         taken_at: new Date().toISOString(),
         due_at: new Date(Date.now() + plan.days * 864e5).toISOString(),
         status: 'active'
@@ -352,8 +399,9 @@
       const today = new Date().toISOString().slice(0, 10);
       if (u.last_bonus === today) throw new Error('Бонус сегодня уже получен');
       u.last_bonus = today;
-      const sum = 50;
-      this.push(db, u, sum, 'bonus', 'Ежедневный бонус клиента');
+      const boosted = u.inventory.bonus_boost_until && new Date(u.inventory.bonus_boost_until) > new Date();
+      const sum = boosted ? 100 : 50;
+      this.push(db, u, sum, 'bonus', boosted ? 'Ежедневный бонус ×2' : 'Ежедневный бонус клиента');
       this.save(db);
       return { amount: sum, balance: u.balance };
     }
@@ -370,7 +418,7 @@
       return { user: this.pub(u) };
     }
 
-    async changePin(token, oldPin, newPin, phone) {
+    async changePin(token, oldPin, newPin) {
       const db = this.db(); const u = this.byToken(db, token);
       if (u.pin_hash !== await hashPin(u.phone, oldPin)) throw new Error('Текущий PIN неверен');
       u.pin_hash = await hashPin(u.phone, newPin);
@@ -380,9 +428,148 @@
 
     async top(token) {
       const db = this.db(); this.byToken(db, token);
-      return db.users.filter(u => !u.settings || u.settings.public !== false)
+      return db.users.filter(u => !u.blocked && (!u.settings || u.settings.public !== false))
         .sort((a, b) => b.balance - a.balance).slice(0, 10)
-        .map(u => ({ name: u.first_name + ' ' + u.last_name[0] + '.', balance: u.balance }));
+        .map(u => ({ name: u.first_name + ' ' + u.last_name[0] + '.', balance: u.balance, title: u.equipped.title || '', role: u.role }));
+    }
+
+    async shopBuy(token, itemId) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const item = SHOP.find(i => i.id === itemId);
+      if (!item) throw new Error('Товар не найден');
+      const inv = u.inventory;
+      if (item.kind === 'skin' && inv.skins.includes(item.value)) throw new Error('Скин уже куплен');
+      if (item.kind === 'title' && inv.titles.includes(item.value)) throw new Error('Титул уже куплен');
+      if (item.kind === 'perk' && inv.limit_up) throw new Error('Лимит уже повышен');
+      if (u.balance < item.price) throw new Error('Недостаточно чекурублей');
+      if (item.kind === 'skin') inv.skins.push(item.value);
+      if (item.kind === 'title') inv.titles.push(item.value);
+      if (item.kind === 'perk') inv.limit_up = true;
+      if (item.kind === 'consumable') inv.insurance = (inv.insurance || 0) + 1;
+      if (item.kind === 'emoji') inv.emoji = '😎';
+      if (item.kind === 'boost') {
+        const base = inv.bonus_boost_until && new Date(inv.bonus_boost_until) > new Date()
+          ? new Date(inv.bonus_boost_until).getTime() : Date.now();
+        inv.bonus_boost_until = new Date(base + 7 * 864e5).toISOString();
+      }
+      this.push(db, u, -item.price, 'shop', 'Покупка: ' + item.name, { item: item.id });
+      this.save(db);
+      return { balance: u.balance, user: this.pub(u) };
+    }
+
+    async shopEquip(token, kind, value) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const inv = u.inventory;
+      if (kind === 'skin' && value !== 'base' && !inv.skins.includes(value)) throw new Error('Скин не куплен');
+      if (kind === 'title' && value && !inv.titles.includes(value)) throw new Error('Титул не куплен');
+      if (kind === 'emoji' && value && !inv.emoji) throw new Error('Смайл не куплен');
+      u.equipped[kind] = value;
+      this.save(db);
+      return { user: this.pub(u) };
+    }
+
+    admin(db, token, allowDev) {
+      const u = this.byToken(db, token);
+      if (u.role !== 'admin' && !(allowDev && u.role === 'developer')) throw new Error('Недостаточно прав');
+      return u;
+    }
+
+    async adminStats(token) {
+      const db = this.db(); this.admin(db, token, true);
+      const sum = arr => Math.round(arr.reduce((s, x) => s + x, 0) * 100) / 100;
+      const day = 864e5, now = Date.now();
+      const games = db.tx.filter(t => t.category.startsWith('game'));
+      const regs = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now - i * day).toISOString().slice(0, 10);
+        regs.push({ day: d, count: db.users.filter(u => u.created_at.slice(0, 10) === d).length });
+      }
+      return {
+        clients: db.users.length,
+        blocked: db.users.filter(u => u.blocked).length,
+        admins: db.users.filter(u => u.role === 'admin').length,
+        developers: db.users.filter(u => u.role === 'developer').length,
+        money: sum(db.users.map(u => u.balance)),
+        debtors: db.users.filter(u => u.balance < 0).length,
+        tx_count: db.tx.length,
+        turnover_24h: sum(db.tx.filter(t => now - new Date(t.ts) < day).map(t => Math.abs(t.amount))),
+        transfers: db.tx.filter(t => t.category === 'transfer_out').length,
+        transfers_sum: sum(db.tx.filter(t => t.category === 'transfer_out').map(t => -t.amount)),
+        credits_active: db.credits.filter(c => c.status === 'active').length,
+        credits_overdue: db.credits.filter(c => c.status === 'overdue').length,
+        credits_sum: sum(db.credits.map(c => c.amount)),
+        games_count: games.length,
+        games_profit: -sum(games.map(t => t.amount)),
+        shop_sum: sum(db.tx.filter(t => t.category === 'shop').map(t => -t.amount)),
+        issued: sum(db.tx.filter(t => t.category === 'emission').map(t => t.amount)),
+        registrations: regs,
+        top: db.users.slice().sort((a, b) => b.balance - a.balance).slice(0, 5)
+          .map(u => ({ name: u.first_name + ' ' + u.last_name, balance: u.balance }))
+      };
+    }
+
+    async adminUsers(token, q) {
+      const db = this.db(); this.admin(db, token, true);
+      const s = String(q || '').trim().toLowerCase();
+      return db.users
+        .filter(u => !s || (u.first_name + ' ' + u.last_name).toLowerCase().includes(s) ||
+          u.phone.includes(s.replace(/\D/g, '')) || u.card_number.includes(s.replace(/\D/g, '')) ||
+          u.email.toLowerCase().includes(s))
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .slice(0, 100)
+        .map(u => ({
+          id: u.id, first_name: u.first_name, last_name: u.last_name, phone: u.phone, email: u.email,
+          card_number: u.card_number, balance: u.balance, role: u.role, blocked: u.blocked,
+          blocked_reason: u.blocked_reason, created_at: u.created_at,
+          tx_count: db.tx.filter(t => t.user_id === u.id).length,
+          credits: db.credits.filter(c => c.user_id === u.id && c.status === 'active').length,
+          title: u.equipped.title || ''
+        }));
+    }
+
+    async adminIssue(token, target, amount, reason) {
+      const db = this.db(); const me = this.admin(db, token);
+      const t = this.lookup(db, target);
+      if (!t) throw new Error('Клиент не найден');
+      amount = Math.round(Number(amount) * 100) / 100;
+      if (!amount) throw new Error('Некорректная сумма');
+      this.push(db, t, amount, 'emission',
+        (amount > 0 ? 'Начисление от банка' : 'Списание банком') + (reason ? ': ' + reason : ''),
+        { by: me.phone });
+      this.save(db);
+      return { balance: t.balance, name: t.first_name + ' ' + t.last_name };
+    }
+
+    async adminRole(token, target, role) {
+      const db = this.db(); const me = this.admin(db, token);
+      if (!ROLES[role]) throw new Error('Неизвестная роль');
+      const t = this.lookup(db, target);
+      if (!t) throw new Error('Клиент не найден');
+      if (t.id === me.id) throw new Error('Нельзя изменить собственную роль');
+      t.role = role;
+      this.save(db);
+      return { name: t.first_name + ' ' + t.last_name, role };
+    }
+
+    async adminBlock(token, target, blocked, reason) {
+      const db = this.db(); const me = this.admin(db, token);
+      const t = this.lookup(db, target);
+      if (!t) throw new Error('Клиент не найден');
+      if (t.id === me.id) throw new Error('Нельзя заблокировать самого себя');
+      if (t.role === 'admin') throw new Error('Нельзя заблокировать администратора');
+      t.blocked = !!blocked;
+      t.blocked_reason = blocked ? (reason || 'Нарушение правил банка') : '';
+      if (blocked) t.token = null;
+      this.save(db);
+      return { name: t.first_name + ' ' + t.last_name, blocked: t.blocked };
+    }
+
+    async adminFeed(token) {
+      const db = this.db(); this.admin(db, token, true);
+      const names = {};
+      db.users.forEach(u => names[u.id] = u.first_name + ' ' + u.last_name);
+      return db.tx.slice().sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 40)
+        .map(t => ({ ts: t.ts, who: names[t.user_id] || '—', title: t.title, amount: t.amount, category: t.category }));
     }
 
     async logout(token) {
@@ -402,8 +589,6 @@
     }
   }
 
-  /* ---------------- выбор адаптера ---------------- */
-
   function readOverride() {
     try { return JSON.parse(localStorage.getItem('cb_server')) || null; } catch (_) { return null; }
   }
@@ -414,14 +599,13 @@
   function createApi() {
     const ov = readOverride();
     const cfg = (ov && ov.url && ov.anonKey) ? ov : (global.CB_CONFIG || {});
-    if (cfg.url && cfg.anonKey) return new SupabaseApi(cfg.url, cfg.anonKey);
-    return new DemoApi();
+    if (cfg.url && cfg.anonKey) return new RemoteApi(cfg.url, cfg.anonKey);
+    return new LocalApi();
   }
 
   global.CB = {
-    createApi, readOverride, writeOverride,
-    SupabaseApi, DemoApi,
+    createApi, readOverride, writeOverride, RemoteApi, LocalApi,
     utils: { translit, normalizePhone, prettyPhone, isEmail, luhnCheckDigit, uid },
-    consts: { WELCOME_BONUS, CREDIT_PLANS, PENALTY_RATE }
+    consts: { WELCOME_BONUS, CREDIT_PLANS, PENALTY_RATE, CREDIT_LIMIT, CREDIT_LIMIT_VIP, SHOP, SKINS, ROLES, OWNER }
   };
 })(window);

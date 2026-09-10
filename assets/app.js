@@ -1,4 +1,3 @@
-/* Чекунец Банк — интерфейс личного кабинета */
 (function () {
   'use strict';
 
@@ -13,8 +12,6 @@
   };
 
   const S = { api: null, token: null, user: null, tx: [], credits: [], tab: 'home', clients: 0, busy: false };
-
-  /* ---------------- форматирование ---------------- */
 
   const money = v => (Math.round(v * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const cur = v => money(v) + ' ₡';
@@ -40,8 +37,6 @@
     if (h >= 1) return h + ' ч. ' + Math.floor((ms % 36e5) / 6e4) + ' мин.';
     return Math.max(1, Math.floor(ms / 6e4)) + ' мин.';
   }
-
-  /* ---------------- тосты / модалки ---------------- */
 
   function toast(text, kind) {
     const t = el('div', 'toast ' + (kind || ''), esc(text));
@@ -83,15 +78,26 @@
     });
   }
 
-  async function guard(fn) {
-    if (S.busy) return;
-    S.busy = true;
+  async function run(fn) {
     try { return await fn(); }
-    catch (e) { bad(e.message || String(e)); }
+    catch (e) {
+      const msg = e.message || String(e);
+      bad(msg);
+      if (S.token && (/заблокирован/i.test(msg) || /Сессия истекла/i.test(msg))) logout();
+    }
+  }
+
+  async function guard(fn) {
+    if (S.busy) return run(fn);
+    S.busy = true;
+    try { return await run(fn); }
     finally { S.busy = false; }
   }
 
-  /* ---------------- вёрстка карты ---------------- */
+  function skinCss(u) {
+    const id = (u.equipped && u.equipped.skin) || 'base';
+    return (C.SKINS[id] || C.SKINS.base).css;
+  }
 
   function cardHtml(u, opts) {
     const showCvv = opts && opts.cvv;
@@ -115,14 +121,10 @@
       </div>`;
   }
 
-  /* ---------------- экраны ---------------- */
-
   function show(id) {
     $$('.screen').forEach(s => s.classList.toggle('on', s.id === id));
     window.scrollTo(0, 0);
   }
-
-  /* ---------------- валидация форм ---------------- */
 
   function setErr(input, msg) {
     const field = input.closest('.field');
@@ -152,8 +154,6 @@
     input.addEventListener('input', () => { input.value = input.value.replace(/\D/g, '').slice(0, n); });
   }
 
-  /* ---------------- инициализация ---------------- */
-
   async function boot() {
     S.api = CB.createApi();
     const badge = $('#backend-badge');
@@ -161,7 +161,7 @@
       badge.textContent = '● Онлайн-режим: счета общие для всех';
       badge.classList.add('live');
     } else {
-      badge.textContent = '◐ Демо-режим: данные только в этом браузере';
+      badge.textContent = '◐ Автономный режим: счёт хранится в этом браузере';
     }
 
     bindPhoneMask($('#rg-phone')); bindPhoneMask($('#li-phone'));
@@ -216,8 +216,6 @@
     document.documentElement.dataset.theme = t === 'light' ? 'light' : 'dark';
     localStorage.setItem('cb_theme', t);
   }
-
-  /* ---------------- регистрация / вход ---------------- */
 
   function doRegister() {
     guard(async () => {
@@ -274,63 +272,68 @@
   }
 
   function serverModal() {
-    modal('Подключение к серверу банка', (b, m) => {
+    modal('Сервер банка', (b, m) => {
       const ov = CB.readOverride() || {};
       b.appendChild(el('p', 'muted',
-        'Впишите данные проекта Supabase — банк станет общим для всех устройств: переводы будут доходить до реальных клиентов. ' +
-        'SQL-схема лежит в файле <b>supabase/schema.sql</b> репозитория.'));
-      const f1 = el('label', 'field', '<span>Project URL</span><input id="sv-url" placeholder="https://xxxx.supabase.co"><em class="err"></em>');
-      const f2 = el('label', 'field', '<span>anon public key</span><input id="sv-key" placeholder="eyJhbGciOi..."><em class="err"></em>');
+        'Адрес и ключ доступа к серверу Чекунец Банка. Пока они не заданы, банк работает автономно: ' +
+        'счета хранятся только в этом браузере и переводы другим людям недоступны.'));
+      const f1 = el('label', 'field', '<span>Адрес сервера</span><input id="sv-url" placeholder="https://..."><em class="err"></em>');
+      const f2 = el('label', 'field', '<span>Ключ доступа</span><input id="sv-key" placeholder="ключ"><em class="err"></em>');
       b.append(f1, f2);
       f1.querySelector('input').value = (ov.url || window.CB_CONFIG.url || '');
       f2.querySelector('input').value = (ov.anonKey || '');
-      const save = el('button', 'btn primary full', 'Проверить и сохранить');
+      const save = el('button', 'btn primary full', 'Проверить и подключить');
       save.onclick = async () => {
         const url = $('#sv-url').value.trim(), key = $('#sv-key').value.trim();
         if (!url || !key) return bad('Заполните оба поля');
         save.disabled = true; save.textContent = 'Проверяем…';
         try {
-          await new CB.SupabaseApi(url, key).ping();
+          await new CB.RemoteApi(url, key).ping();
           CB.writeOverride({ url, anonKey: key });
           ok('Сервер подключён, перезагружаем…');
           setTimeout(() => location.reload(), 700);
         } catch (e) {
           bad('Не вышло: ' + e.message);
-          save.disabled = false; save.textContent = 'Проверить и сохранить';
+          save.disabled = false; save.textContent = 'Проверить и подключить';
         }
       };
-      const off = el('button', 'btn full ghost', 'Вернуться в демо-режим');
+      const off = el('button', 'btn full ghost', 'Работать автономно');
       off.onclick = () => { CB.writeOverride(null); location.reload(); };
       b.append(save, off);
     });
   }
 
-  /* ================= РЕНДЕР ЛИЧНОГО КАБИНЕТА ================= */
-
   function render() {
     const u = S.user;
     if (!u) return;
-    $('#tb-avatar').textContent = (u.first_name[0] + u.last_name[0]).toUpperCase();
-    $('#tb-name').textContent = u.first_name + ' ' + u.last_name;
-    $('#tb-sub').textContent = U.prettyPhone(u.phone);
+    $('#tb-avatar').textContent = avatarOf(u);
+    $('#tb-name').innerHTML = esc(u.first_name + ' ' + u.last_name) + roleMark(u);
+    $('#tb-sub').textContent = (u.equipped && u.equipped.title) ? u.equipped.title : U.prettyPhone(u.phone);
+    $('.tab[data-tab="admin"]').classList.toggle('hidden', !isStaff(u));
     const mode = $('#tb-mode');
-    mode.textContent = S.api.mode === 'online' ? 'online' : 'demo';
+    mode.textContent = S.api.mode === 'online' ? 'online' : 'офлайн';
     mode.classList.toggle('live', S.api.mode === 'online');
 
     const v = $('#view');
     v.innerHTML = '';
-    ({ home: viewHome, history: viewHistory, games: viewGames, credits: viewCredits, settings: viewSettings, profile: viewProfile }[S.tab])(v);
+    const views = { home: viewHome, history: viewHistory, games: viewGames, shop: viewShop,
+                    credits: viewCredits, settings: viewSettings, profile: viewProfile, admin: viewAdmin };
+    (views[S.tab] || viewHome)(v);
   }
 
   const hidden = () => !!(S.user.settings && S.user.settings.hide_balance);
-
-  /* ---------------- ГЛАВНАЯ ---------------- */
+  const isAdmin = u => u && u.role === 'admin';
+  const isStaff = u => u && (u.role === 'admin' || u.role === 'developer');
+  const avatarOf = u => (u.equipped && u.equipped.emoji) || (u.first_name[0] + u.last_name[0]).toUpperCase();
+  const roleMark = u => u && C.ROLES[u.role] && u.role !== 'client' ? ' ' + C.ROLES[u.role].icon : '';
+  const inv = () => (S.user && S.user.inventory) || { skins: ['base'], titles: [], insurance: 0 };
 
   function viewHome(v) {
     const u = S.user;
 
     const card = el('div', 'bankcard', cardHtml(u));
     card.style.maxWidth = '100%';
+    card.style.background = skinCss(u);
     card.onclick = () => cardModal();
     v.appendChild(card);
 
@@ -363,7 +366,7 @@
       ['🏆', 'Рейтинг', topModal],
       ['🧾', 'История', () => goTab('history')],
       ['🎮', 'Заработать', () => goTab('games')],
-      ['💳', 'Кредит', () => goTab('credits')]
+      ['🛍', 'Магазин', () => goTab('shop')]
     ].forEach(([ico, label, fn]) => {
       const b = el('button', 'act', `<i>${ico}</i><span>${label}</span>`);
       b.onclick = fn;
@@ -383,7 +386,6 @@
     v.appendChild(list);
   }
 
-  /** Открыть кабинет с чистой вкладкой «Главная». */
   function enterApp() {
     S.tab = 'home';
     $$('.tab').forEach(x => x.classList.toggle('active', x.dataset.tab === 'home'));
@@ -399,7 +401,7 @@
 
   const TX_ICONS = {
     transfer_in: '⬇️', transfer_out: '⬆️', bonus: '🎁', game_bet: '🎲', game_win: '🏅',
-    credit: '💳', credit_pay: '✅', penalty: '⚠️'
+    credit: '💳', credit_pay: '✅', penalty: '⚠️', shop: '🛍', emission: '🏛'
   };
 
   function txRow(t) {
@@ -428,6 +430,7 @@
     const u = S.user;
     modal('Карта Чекунец Банка', b => {
       const c = el('div', 'bankcard big', cardHtml(u, { cvv: true }));
+      c.style.background = skinCss(u);
       b.appendChild(c);
       b.appendChild(el('div', 'card', `
         <div class="kv"><span>Номер карты</span><b class="mono">${cardMask(u.card_number)}</b></div>
@@ -444,8 +447,6 @@
       b.appendChild(copy);
     });
   }
-
-  /* ---------------- ПЕРЕВОД ---------------- */
 
   function transferModal(prefill) {
     modal('Перевод клиенту банка', (b, m) => {
@@ -516,15 +517,13 @@
         const c = el('div', 'card');
         if (!rows.length) c.appendChild(el('div', 'empty', 'Пока пусто'));
         rows.forEach((r, i) => {
-          const row = el('div', 'kv', `<span>${i + 1}. ${esc(r.name)}</span><b>${cur(r.balance)}</b>`);
+          const row = el('div', 'kv', `<span>${i + 1}. ${esc(r.name)}${r.title ? ' · ' + esc(r.title) : ''}</span><b>${cur(r.balance)}</b>`);
           c.appendChild(row);
         });
         b.appendChild(c);
       });
     });
   }
-
-  /* ---------------- ИСТОРИЯ ---------------- */
 
   function viewHistory(v) {
     const inSum = S.tx.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
@@ -537,7 +536,8 @@
     v.appendChild(stats);
 
     const filters = [
-      ['all', 'Все'], ['transfer', 'Переводы'], ['game', 'Игры'], ['credit', 'Кредиты'], ['bonus', 'Бонусы']
+      ['all', 'Все'], ['transfer', 'Переводы'], ['game', 'Игры'], ['credit', 'Кредиты'],
+      ['shop', 'Покупки'], ['bonus', 'Бонусы']
     ];
     const seg = el('div', 'seg');
     seg.style.overflowX = 'auto';
@@ -561,7 +561,8 @@
           (active === 'transfer' && t.category.startsWith('transfer')) ||
           (active === 'game' && t.category.startsWith('game')) ||
           (active === 'credit' && (t.category === 'credit' || t.category === 'credit_pay' || t.category === 'penalty')) ||
-          (active === 'bonus' && t.category === 'bonus');
+          (active === 'shop' && t.category === 'shop') ||
+          (active === 'bonus' && (t.category === 'bonus' || t.category === 'emission'));
         return okCat && (!q || t.title.toLowerCase().includes(q));
       });
       if (!rows.length) list.appendChild(el('div', 'empty', 'Ничего не найдено'));
@@ -571,8 +572,6 @@
     search.querySelector('input').addEventListener('input', draw);
     draw();
   }
-
-  /* ---------------- ИГРЫ ---------------- */
 
   const GAMES = [
     { id: 'clicker', ico: '👆', name: 'Смена в банке', desc: 'Кликай 10 секунд — получай чекурубли. Без ставки.', risky: false, run: gameClicker },
@@ -633,7 +632,6 @@
     return t;
   }
 
-  /** Записать результат игры на счёт. */
   function settle(game, stake, payout, title) {
     return guard(async () => {
       await S.api.game(S.token, { game, stake, payout, title });
@@ -661,7 +659,6 @@
     };
   }
 
-  /* --- Кликер --- */
   function gameClicker() {
     modal('Смена в банке', (b, m) => {
       let clicks = 0, running = false, t = 10;
@@ -691,7 +688,6 @@
     }, { sticky: true });
   }
 
-  /* --- Викторина --- */
   const QUIZ = [
     ['Как называется валюта Чекунец Банка?', ['Чекурубль', 'Чекудоллар', 'Чекуевро'], 0],
     ['Что такое кредит?', ['Деньги в долг под процент', 'Подарок от банка', 'Налог'], 0],
@@ -739,7 +735,6 @@
     }, { sticky: true });
   }
 
-  /* --- Монетка --- */
   function gameCoin() {
     modal('Орёл или решка', (b, m) => {
       const getStake = stakeField(b);
@@ -775,7 +770,6 @@
     }, { sticky: true });
   }
 
-  /* --- Кости --- */
   const DICE = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
   function gameDice() {
     modal('Кости против банка', (b, m) => {
@@ -816,7 +810,6 @@
     }, { sticky: true });
   }
 
-  /* --- Колесо фортуны --- */
   const SECTORS = [
     { m: 0, w: 26, color: '#ff5470' }, { m: 0.5, w: 20, color: '#8e95b5' },
     { m: 1.5, w: 22, color: '#7c5cff' }, { m: 2, w: 18, color: '#22d07a' },
@@ -862,7 +855,6 @@
     }, { sticky: true });
   }
 
-  /* --- Краш --- */
   function gameCrash() {
     modal('Краш 🚀', (b, m) => {
       const getStake = stakeField(b);
@@ -902,8 +894,6 @@
     }, { sticky: true });
   }
 
-  /* ---------------- КРЕДИТЫ ---------------- */
-
   function viewCredits(v) {
     const active = S.credits.filter(c => c.status === 'active');
     const debt = active.reduce((s, c) => s + (c.total - c.paid), 0);
@@ -920,10 +910,11 @@
     v.appendChild(take);
 
     v.appendChild(el('div', 'card', `
-      <div class="kv"><span>Сумма</span><b>от 100 до 50 000 ₡</b></div>
+      <div class="kv"><span>Сумма</span><b>от 100 до ${money(creditLimit())} ₡</b></div>
       <div class="kv"><span>Ставка</span><b>${C.CREDIT_PLANS.map(p => p.rate + '% / ' + p.label).join(' · ')}</b></div>
       <div class="kv"><span>Максимум кредитов</span><b>3 активных</b></div>
       <div class="kv"><span>Просрочка</span><b class="neg">списание долга + штраф ${C.PENALTY_RATE}%</b></div>
+      <div class="kv"><span>Страховки в запасе</span><b>${inv().insurance || 0} шт.</b></div>
       <div class="empty" style="padding:8px 0 0;text-align:left">Если не погасить кредит до срока, банк спишет весь остаток и штраф со счёта — баланс может уйти в минус.</div>`));
 
     v.appendChild(el('div', 'sec-title', 'Мои кредиты'));
@@ -955,6 +946,8 @@
       v.appendChild(box);
     });
   }
+
+  function creditLimit() { return inv().limit_up ? C.CREDIT_LIMIT_VIP : C.CREDIT_LIMIT; }
 
   function creditModal() {
     modal('Кредит в Чекунец Банке', (b, m) => {
@@ -1020,8 +1013,6 @@
     });
   }
 
-  /* ---------------- НАСТРОЙКИ ---------------- */
-
   function switchRow(title, sub, checked, onChange) {
     const row = el('div', 'switch', `<div><b>${esc(title)}</b><small>${esc(sub)}</small></div>
       <label class="sw"><input type="checkbox" ${checked ? 'checked' : ''}><i></i></label>`);
@@ -1054,7 +1045,7 @@
     sec.appendChild(el('div', 'sec-title', 'Безопасность'));
     const pinBtn = el('button', 'btn full', '🔑 Сменить PIN-код');
     pinBtn.onclick = pinModal;
-    const srv = el('button', 'btn full ghost', '⚙︎ Сервер банка (' + (S.api.mode === 'online' ? 'онлайн' : 'демо') + ')');
+    const srv = el('button', 'btn full ghost', '⚙︎ Сервер банка (' + (S.api.mode === 'online' ? 'онлайн' : 'автономно') + ')');
     srv.onclick = serverModal;
     const exp = el('button', 'btn full ghost', '⬇️ Выгрузить мои данные (JSON)');
     exp.onclick = exportData;
@@ -1114,7 +1105,6 @@
     ok('Файл выгружен');
   }
 
-  /** Вернуть экран входа в исходное состояние (вкладка «Вход»). */
   function resetAuth() {
     $$('[data-auth]').forEach(x => x.classList.toggle('active', x.dataset.auth === 'login'));
     $('#form-login').classList.remove('hidden');
@@ -1133,16 +1123,16 @@
     resetAuth();
   }
 
-  /* ---------------- ПРОФИЛЬ ---------------- */
-
   function viewProfile(v) {
     const u = S.user;
     const head = el('div', 'card');
     head.innerHTML = `
       <div style="display:grid;justify-items:center;gap:8px;padding:6px 0">
-        <div class="avatar" style="width:72px;height:72px;border-radius:24px;font-size:26px">${esc((u.first_name[0] + u.last_name[0]).toUpperCase())}</div>
-        <b style="font-size:19px">${esc(u.first_name + ' ' + u.last_name)}</b>
+        <div class="avatar" style="width:72px;height:72px;border-radius:24px;font-size:26px">${esc(avatarOf(u))}</div>
+        <b style="font-size:19px">${esc(u.first_name + ' ' + u.last_name)}${roleMark(u)}</b>
         <span class="muted">${esc(u.card_holder)}</span>
+        ${u.equipped && u.equipped.title ? `<span class="tag ok">${esc(u.equipped.title)}</span>` : ''}
+        <span class="chip">${C.ROLES[u.role] ? C.ROLES[u.role].icon + ' ' + C.ROLES[u.role].label : 'Клиент'}</span>
         <span class="chip">Клиент с ${new Date(u.created_at).toLocaleDateString('ru-RU')}</span>
       </div>`;
     v.appendChild(head);
@@ -1160,7 +1150,9 @@
       <div class="kv"><span>Фамилия</span><b>${esc(u.last_name)}</b></div>
       <div class="kv"><span>Латиницей</span><b>${esc(u.card_holder)}</b></div>
       <div class="kv"><span>Телефон</span><b class="mono">${esc(U.prettyPhone(u.phone))}</b></div>
-      <div class="kv"><span>Почта</span><b>${esc(u.email)}</b></div>`));
+      <div class="kv"><span>Почта</span><b>${esc(u.email)}</b></div>
+      <div class="kv"><span>Статус</span><b>${C.ROLES[u.role] ? esc(C.ROLES[u.role].label) : 'Клиент'}</b></div>
+      <div class="kv"><span>Титул</span><b>${u.equipped && u.equipped.title ? esc(u.equipped.title) : '—'}</b></div>`));
 
     v.appendChild(el('div', 'sec-title', 'Счёт и карта'));
     const cardBox = el('div', 'card', `
@@ -1174,6 +1166,12 @@
     openCard.onclick = cardModal;
     cardBox.appendChild(openCard);
     v.appendChild(cardBox);
+
+    if (isStaff(u)) {
+      const adm = el('button', 'btn primary full', (isAdmin(u) ? '👑 Панель администратора' : '🛠 Панель разработчика'));
+      adm.onclick = () => goTab('admin');
+      v.appendChild(adm);
+    }
 
     const edit = el('button', 'btn primary full', '✏️ Изменить контакты');
     edit.onclick = editProfile;
@@ -1218,6 +1216,341 @@
         ok('Данные обновлены');
       });
       b.appendChild(go);
+    });
+  }
+
+  function viewShop(v) {
+    const u = S.user, i = inv();
+
+    const bal = el('div', 'card');
+    bal.innerHTML = `<div class="balance"><div class="sub">Доступно к тратам</div>
+      <div class="amount ${u.balance < 0 ? 'neg' : ''}">${hidden() ? '••••' : money(u.balance)} <small>₡</small></div>
+      <div class="sub">Заработать можно в разделе «Игры»</div></div>`;
+    v.appendChild(bal);
+
+    const preview = el('div', 'bankcard', cardHtml(u));
+    preview.style.maxWidth = '100%';
+    preview.style.background = skinCss(u);
+    v.appendChild(preview);
+
+    v.appendChild(el('div', 'sec-title', 'Оформление карты'));
+    const skins = el('div', 'skins');
+    Object.entries(C.SKINS).forEach(([id, sk]) => {
+      const owned = id === 'base' || (i.skins || []).includes(id);
+      const on = ((u.equipped && u.equipped.skin) || 'base') === id;
+      const item = C.SHOP.find(x => x.kind === 'skin' && x.value === id);
+      const t = el('button', 'skin' + (on ? ' on' : ''),
+        `<span class="skin-dot" style="background:${sk.css}"></span>
+         <b>${esc(sk.name)}</b>
+         <span class="muted">${owned ? (on ? 'на карте' : 'нажмите, чтобы надеть') : cur(item ? item.price : 0)}</span>`);
+      t.onclick = () => owned ? equip('skin', id) : buy(item.id);
+      skins.appendChild(t);
+    });
+    v.appendChild(skins);
+
+    v.appendChild(el('div', 'sec-title', 'Титулы'));
+    const titles = el('div', 'card');
+    const owned = i.titles || [];
+    if (owned.length) {
+      const none = el('button', 'btn full mini' + (!(u.equipped && u.equipped.title) ? ' primary' : ''), 'Без титула');
+      none.onclick = () => equip('title', '');
+      titles.appendChild(none);
+      owned.forEach(t => {
+        const b = el('button', 'btn full mini' + (u.equipped && u.equipped.title === t ? ' primary' : ''), esc(t));
+        b.onclick = () => equip('title', t);
+        titles.appendChild(b);
+      });
+    } else {
+      titles.appendChild(el('div', 'empty', 'Титулы пока не куплены'));
+    }
+    v.appendChild(titles);
+
+    if (i.emoji) {
+      v.appendChild(el('div', 'sec-title', 'Значок вместо инициалов'));
+      const row = el('div', 'emoji-row');
+      ['😎', '🤑', '👑', '🐺', '🦊', '🍀', '🚀', '🔥', '🐉', '🎩'].forEach(e => {
+        const b = el('button', 'emoji-btn' + (u.equipped && u.equipped.emoji === e ? ' on' : ''), e);
+        b.onclick = () => equip('emoji', e);
+        row.appendChild(b);
+      });
+      const off = el('button', 'emoji-btn' + (!(u.equipped && u.equipped.emoji) ? ' on' : ''), 'АБ');
+      off.onclick = () => equip('emoji', '');
+      row.appendChild(off);
+      v.appendChild(row);
+    }
+
+    v.appendChild(el('div', 'sec-title', 'Товары банка'));
+    const boostLeft = i.bonus_boost_until && new Date(i.bonus_boost_until) > new Date()
+      ? left(i.bonus_boost_until) : null;
+    C.SHOP.forEach(it => {
+      const has =
+        (it.kind === 'skin' && (i.skins || []).includes(it.value)) ||
+        (it.kind === 'title' && (i.titles || []).includes(it.value)) ||
+        (it.kind === 'perk' && i.limit_up) ||
+        (it.kind === 'emoji' && i.emoji);
+      const box = el('div', 'good');
+      box.innerHTML = `<div class="good-ico">${it.icon}</div>
+        <div class="good-main"><b>${esc(it.name)}</b><span class="muted">${esc(it.desc)}</span>
+        ${it.id === 'insurance' && i.insurance ? `<span class="muted">в запасе: ${i.insurance}</span>` : ''}
+        ${it.id === 'bonus_boost' && boostLeft ? `<span class="muted">активен ещё ${boostLeft}</span>` : ''}</div>`;
+      const btn = el('button', 'btn mini ' + (has ? '' : 'primary'), has ? 'куплено' : money(it.price) + ' ₡');
+      btn.disabled = has;
+      btn.onclick = () => buy(it.id);
+      box.appendChild(btn);
+      v.appendChild(box);
+    });
+
+    function buy(id) {
+      const it = C.SHOP.find(x => x.id === id);
+      confirmBox('Покупка', it.name + ' за ' + cur(it.price) + '. Списать чекурубли?', () => guard(async () => {
+        await S.api.shopBuy(S.token, id);
+        await refresh(); render();
+        ok('Куплено: ' + it.name);
+      }));
+    }
+
+    function equip(kind, value) {
+      guard(async () => {
+        await S.api.shopEquip(S.token, kind, value);
+        await refresh(); render();
+      });
+    }
+  }
+
+  function viewAdmin(v) {
+    const me = S.user;
+    if (!isStaff(me)) { v.appendChild(el('div', 'empty', 'Раздел доступен сотрудникам банка')); return; }
+
+    const head = el('div', 'card');
+    head.innerHTML = `<div class="balance">
+      <div class="sub">${isAdmin(me) ? '👑 Панель администратора' : '🛠 Панель разработчика'}</div>
+      <div class="amount" style="font-size:22px">${esc(me.first_name + ' ' + me.last_name)}</div>
+      <div class="sub">${isAdmin(me) ? 'полный доступ' : 'только просмотр аналитики и клиентов'}</div></div>`;
+    v.appendChild(head);
+
+    const seg = el('div', 'seg');
+    let tab = viewAdmin.tab || 'stats';
+    [['stats', 'Аналитика'], ['users', 'Люди'], ['feed', 'Лента']].forEach(([id, label]) => {
+      const b = el('button', 'seg-btn' + (id === tab ? ' active' : ''), label);
+      b.onclick = () => { viewAdmin.tab = id; render(); };
+      seg.appendChild(b);
+    });
+    v.appendChild(seg);
+
+    const box = el('div', '');
+    box.style.display = 'grid'; box.style.gap = '14px';
+    v.appendChild(box);
+    box.appendChild(el('div', 'empty', 'Загружаем…'));
+
+    if (tab === 'stats') adminStats(box);
+    if (tab === 'users') adminUsers(box);
+    if (tab === 'feed') adminFeed(box);
+  }
+
+  function adminStats(box) {
+    run(async () => {
+      const st = await S.api.adminStats(S.token);
+      box.innerHTML = '';
+
+      const tiles = (title, rows) => {
+        const c = el('div', 'card');
+        c.appendChild(el('div', 'sec-title', title));
+        rows.forEach(([k, val, cls]) => c.appendChild(el('div', 'kv', `<span>${k}</span><b class="${cls || ''}">${val}</b>`)));
+        box.appendChild(c);
+      };
+
+      const top = el('div', 'stat-row');
+      top.innerHTML = `<div class="stat"><b>${st.clients}</b><span>клиентов</span></div>
+        <div class="stat"><b>${money(st.money)}</b><span>₡ в обороте</span></div>
+        <div class="stat"><b>${st.tx_count}</b><span>операций</span></div>`;
+      box.appendChild(top);
+
+      const days = el('div', 'card');
+      days.appendChild(el('div', 'sec-title', 'Регистрации за неделю'));
+      const max = Math.max(1, ...st.registrations.map(r => r.count));
+      const chart = el('div', 'chart');
+      st.registrations.forEach(r => {
+        const col = el('div', 'chart-col');
+        col.innerHTML = `<b>${r.count}</b><i style="height:${Math.round(r.count / max * 90) + 4}px"></i>
+          <span>${new Date(r.day).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}</span>`;
+        chart.appendChild(col);
+      });
+      days.appendChild(chart);
+      box.appendChild(days);
+
+      tiles('Клиенты', [
+        ['Всего', st.clients],
+        ['Заблокированы', st.blocked, st.blocked ? 'neg' : ''],
+        ['Администраторы', st.admins],
+        ['Разработчики', st.developers],
+        ['С минусом на счёте', st.debtors, st.debtors ? 'neg' : '']
+      ]);
+
+      tiles('Деньги', [
+        ['Чекурублей на счетах', cur(st.money)],
+        ['Оборот за 24 часа', cur(st.turnover_24h)],
+        ['Переводов', st.transfers + ' на ' + cur(st.transfers_sum)],
+        ['Выдано банком вручную', cur(st.issued)],
+        ['Потрачено в магазине', cur(st.shop_sum)]
+      ]);
+
+      tiles('Кредиты и игры', [
+        ['Активных кредитов', st.credits_active],
+        ['Просроченных', st.credits_overdue, st.credits_overdue ? 'neg' : ''],
+        ['Выдано кредитов', cur(st.credits_sum)],
+        ['Сыграно игр', st.games_count],
+        ['Итог казино', signed(st.games_profit), st.games_profit >= 0 ? 'pos' : 'neg']
+      ]);
+
+      const topC = el('div', 'card');
+      topC.appendChild(el('div', 'sec-title', 'Богатейшие'));
+      st.top.forEach((r, i) => topC.appendChild(el('div', 'kv', `<span>${i + 1}. ${esc(r.name)}</span><b>${cur(r.balance)}</b>`)));
+      box.appendChild(topC);
+    });
+  }
+
+  function adminUsers(box, query) {
+    run(async () => {
+      const rows = await S.api.adminUsers(S.token, query || '');
+      box.innerHTML = '';
+
+      if (isAdmin(S.user)) {
+        const issue = el('button', 'btn primary full', '🏛 Выдать чекурубли');
+        issue.onclick = () => issueModal();
+        box.appendChild(issue);
+      }
+
+      const search = el('label', 'field', `<input placeholder="Поиск: имя, телефон, карта, почта" value="${esc(query || '')}">`);
+      const inp = search.querySelector('input');
+      let timer;
+      inp.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => adminUsers(box, inp.value.trim()), 400);
+      });
+      box.appendChild(search);
+
+      box.appendChild(el('div', 'sec-title', 'Зарегистрированные — ' + rows.length));
+      if (!rows.length) box.appendChild(el('div', 'card', '<div class="empty">Никого не найдено</div>'));
+
+      rows.forEach(r => {
+        const c = el('div', 'card person' + (r.blocked ? ' blocked' : ''));
+        c.innerHTML = `
+          <div class="person-head">
+            <div class="avatar">${esc((r.first_name[0] + r.last_name[0]).toUpperCase())}</div>
+            <div class="person-main">
+              <b>${esc(r.first_name + ' ' + r.last_name)} ${C.ROLES[r.role] ? C.ROLES[r.role].icon : ''}</b>
+              <span class="muted mono">${esc(U.prettyPhone(r.phone))}</span>
+            </div>
+            <b class="${r.balance < 0 ? 'neg' : ''}">${cur(r.balance)}</b>
+          </div>
+          <div class="kv"><span>Почта</span><b>${esc(r.email)}</b></div>
+          <div class="kv"><span>Карта</span><b class="mono">${cardMask(r.card_number)}</b></div>
+          <div class="kv"><span>Регистрация</span><b>${new Date(r.created_at).toLocaleString('ru-RU')}</b></div>
+          <div class="kv"><span>Операций · кредитов</span><b>${r.tx_count} · ${r.credits}</b></div>
+          <div class="kv"><span>Статус</span><b class="${r.blocked ? 'neg' : ''}">${
+            r.blocked ? 'заблокирован — ' + esc(r.blocked_reason || '') : (C.ROLES[r.role] ? C.ROLES[r.role].label : 'Клиент')}</b></div>`;
+
+        if (isAdmin(S.user)) {
+          const acts = el('div', 'grid2');
+          acts.style.marginTop = '10px';
+
+          const give = el('button', 'btn mini primary', '🏛 Начислить');
+          give.onclick = () => issueModal(r.phone);
+
+          const role = el('button', 'btn mini', '🎖 Роль');
+          role.onclick = () => roleModal(r);
+
+          const block = el('button', 'btn mini ' + (r.blocked ? '' : 'danger'), r.blocked ? '🔓 Разблокировать' : '🚫 Заблокировать');
+          block.onclick = () => r.blocked ? doBlock(r, false, '') : blockModal(r);
+
+          const send = el('button', 'btn mini', '💸 Перевести');
+          send.onclick = () => transferModal(r.phone);
+
+          acts.append(give, role, block, send);
+          c.appendChild(acts);
+        }
+        box.appendChild(c);
+      });
+
+      function refreshList() { adminUsers(box, inp.value.trim()); }
+
+      function issueModal(target) {
+        modal('Выдача чекурублей', (b, m) => {
+          b.appendChild(el('p', 'muted', 'Банк начислит сумму на счёт клиента. Отрицательная сумма спишет чекурубли.'));
+          const f1 = el('label', 'field', `<span>Клиент (телефон, карта или ФИО)</span><input value="${esc(target ? U.prettyPhone(target) : '')}"><em class="err"></em>`);
+          const f2 = el('label', 'field', '<span>Сумма, ₡</span><input inputmode="decimal" value="1000"><em class="err"></em>');
+          const f3 = el('label', 'field', '<span>Причина</span><input maxlength="60" placeholder="промоакция"></label>');
+          b.append(f1, f2, f3);
+          const row = el('div', 'actions');
+          [1000, 10000, -1000].forEach(x => {
+            const q = el('button', 'act', `<span>${x > 0 ? '+' : ''}${x}</span>`);
+            q.onclick = () => f2.querySelector('input').value = x;
+            row.appendChild(q);
+          });
+          b.appendChild(row);
+          const go = el('button', 'btn primary full', 'Провести');
+          go.onclick = () => guard(async () => {
+            const sum = Number(String(f2.querySelector('input').value).replace(',', '.'));
+            const r2 = await S.api.adminIssue(S.token, f1.querySelector('input').value.trim(), sum, f3.querySelector('input').value.trim());
+            m.close(); refreshList();
+            ok(r2.name + ': ' + signed(sum) + ', теперь ' + cur(r2.balance));
+          });
+          b.appendChild(go);
+        });
+      }
+
+      function roleModal(r) {
+        modal('Статус клиента', (b, m) => {
+          b.appendChild(el('p', 'muted', esc(r.first_name + ' ' + r.last_name) + ' — текущий статус: ' +
+            (C.ROLES[r.role] ? C.ROLES[r.role].label : 'Клиент')));
+          Object.entries(C.ROLES).forEach(([id, info]) => {
+            const btn = el('button', 'btn full' + (id === r.role ? ' primary' : ''), info.icon + ' ' + info.label);
+            btn.onclick = () => guard(async () => {
+              await S.api.adminRole(S.token, r.phone, id);
+              m.close(); refreshList();
+              ok(r.first_name + ' теперь ' + info.label.toLowerCase());
+            });
+            b.appendChild(btn);
+          });
+        });
+      }
+
+      function blockModal(r) {
+        modal('Блокировка счёта', (b, m) => {
+          b.appendChild(el('p', 'muted', 'Клиент не сможет войти и получать переводы, пока блокировка не снята.'));
+          const f = el('label', 'field', '<span>Причина</span><input maxlength="60" placeholder="мошенничество"></label>');
+          b.appendChild(f);
+          const go = el('button', 'btn danger full', 'Заблокировать');
+          go.onclick = () => { m.close(); doBlock(r, true, f.querySelector('input').value.trim()); };
+          b.appendChild(go);
+        });
+      }
+
+      function doBlock(r, val, reason) {
+        guard(async () => {
+          await S.api.adminBlock(S.token, r.phone, val, reason);
+          refreshList();
+          ok(r.first_name + (val ? ' заблокирован' : ' разблокирован'));
+        });
+      }
+    });
+  }
+
+  function adminFeed(box) {
+    run(async () => {
+      const rows = await S.api.adminFeed(S.token);
+      box.innerHTML = '';
+      box.appendChild(el('div', 'sec-title', 'Последние операции банка'));
+      const c = el('div', 'card');
+      if (!rows.length) c.appendChild(el('div', 'empty', 'Операций пока нет'));
+      rows.forEach(t => {
+        const row = el('div', 'tx');
+        row.innerHTML = `<div class="tx-ico">${TX_ICONS[t.category] || '•'}</div>
+          <div class="tx-main"><div class="tx-t">${esc(t.who)}</div><div class="tx-d">${esc(t.title)} · ${when(t.ts)}</div></div>
+          <div class="tx-a ${t.amount >= 0 ? 'pos' : 'neg'}">${signed(t.amount)}</div>`;
+        c.appendChild(row);
+      });
+      box.appendChild(c);
     });
   }
 
