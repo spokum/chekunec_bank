@@ -104,6 +104,8 @@
   };
 
   const SKINS = {
+    chekushka: { name: 'Чекушка', css: 'linear-gradient(135deg,#17301f 0%,#4a7c4e 60%,#9dc08b 100%)' },
+    goldbank:  { name: 'Золото банка', css: 'linear-gradient(135deg,#3b2f10 0%,#9c7c2a 55%,#e0c979 100%)' },
     base:     { name: 'Классическая', css: 'linear-gradient(135deg,#232a3d 0%,#3b4a72 100%)' },
     graphite: { name: 'Графит', css: 'linear-gradient(135deg,#1b1e26 0%,#3c424f 100%)' },
     azure:    { name: 'Лазурь', css: 'linear-gradient(135deg,#1c3350 0%,#4a7ba8 100%)' },
@@ -122,19 +124,53 @@
   };
 
   const SHOP = [
-    { id: 'skin_graphite', kind: 'skin', value: 'graphite', price: 2500, name: 'Оформление «Графит»', desc: 'Тёмно-серая карта' },
-    { id: 'skin_azure',    kind: 'skin', value: 'azure',    price: 3000, name: 'Оформление «Лазурь»', desc: 'Спокойная синяя карта' },
-    { id: 'skin_emerald',  kind: 'skin', value: 'emerald',  price: 3500, name: 'Оформление «Изумруд»', desc: 'Глубокий зелёный' },
-    { id: 'skin_sand',     kind: 'skin', value: 'sand',     price: 4000, name: 'Оформление «Песок»', desc: 'Тёплый бежевый' },
-    { id: 'skin_platinum', kind: 'skin', value: 'platinum', price: 9000, name: 'Оформление «Платина»', desc: 'Премиальная карта банка' },
-    { id: 'title_lucky',  kind: 'title', value: 'Везунчик',   price: 1500, name: 'Титул «Везунчик»', desc: 'Подпись у имени в профиле и рейтинге' },
-    { id: 'title_vip',    kind: 'title', value: 'VIP-клиент', price: 4000, name: 'Титул «VIP-клиент»', desc: 'Подпись у имени' },
-    { id: 'title_magnat', kind: 'title', value: 'Магнат',     price: 12000, name: 'Титул «Магнат»', desc: 'Для очень богатых' },
-    { id: 'insurance',   kind: 'consumable', price: 1200, name: 'Страховка от просрочки', desc: 'Отменяет штраф 25% один раз' },
-    { id: 'bonus_boost', kind: 'boost', price: 1800, name: 'Двойной бонус, 7 дней', desc: 'Бонус дня 100 ₡ вместо 50' },
-    { id: 'limit_up',    kind: 'perk',  price: 15000, name: 'Повышенный кредитный лимит', desc: 'Кредиты до 150 000 ₡ навсегда' },
-    { id: 'avatar',      kind: 'avatar', price: 700, name: 'Цвет значка', desc: 'Свой цвет инициалов в шапке и профиле' }
+    { id: 'skin_graphite', kind: 'skin', value: 'graphite', price: 2500, group: 'Оформление карты',
+      name: 'Оформление «Графит»', desc: 'Тёмно-серая карта' },
+    { id: 'skin_azure', kind: 'skin', value: 'azure', price: 3000, group: 'Оформление карты',
+      name: 'Оформление «Лазурь»', desc: 'Спокойная синяя карта' },
+    { id: 'skin_emerald', kind: 'skin', value: 'emerald', price: 3500, group: 'Оформление карты',
+      name: 'Оформление «Изумруд»', desc: 'Глубокий зелёный' },
+    { id: 'skin_sand', kind: 'skin', value: 'sand', price: 4000, group: 'Оформление карты',
+      name: 'Оформление «Песок»', desc: 'Тёплый бежевый' },
+    { id: 'skin_chekushka', kind: 'skin', value: 'chekushka', price: 6000, group: 'Оформление карты',
+      name: 'Оформление «Чекушка»', desc: 'Бутылочное стекло — фирменный стиль банка' },
+    { id: 'skin_platinum', kind: 'skin', value: 'platinum', price: 9000, group: 'Оформление карты',
+      name: 'Оформление «Платина»', desc: 'Премиальная карта банка' },
+
+    { id: 'title_lucky', kind: 'title', value: 'Везунчик', price: 1500, group: 'Титулы',
+      name: 'Титул «Везунчик»', desc: 'Подпись у имени в профиле и рейтинге' },
+    { id: 'title_chekushkin', kind: 'title', value: 'Чекушкин', price: 2500, group: 'Титулы',
+      name: 'Титул «Чекушкин»', desc: 'Для своих' },
+    { id: 'title_vip', kind: 'title', value: 'VIP-клиент', price: 4000, group: 'Титулы',
+      name: 'Титул «VIP-клиент»', desc: 'Подпись у имени' },
+    { id: 'title_magnat', kind: 'title', value: 'Магнат', price: 12000, group: 'Титулы',
+      name: 'Титул «Магнат»', desc: 'Для очень богатых' },
+    { id: 'title_legend', kind: 'title', value: 'Легенда банка', price: 25000, group: 'Титулы',
+      name: 'Титул «Легенда банка»', desc: 'Самый редкий титул' },
+
+    { id: 'case', kind: 'case', price: 1000, group: 'Ящики и удача',
+      name: 'Ящик чекушек', desc: 'Открывается сразу: от пустого до крупного выигрыша и редкого оформления' },
+    { id: 'avatar', kind: 'avatar', price: 700, group: 'Внешний вид',
+      name: 'Цвет значка', desc: 'Свой цвет инициалов в шапке и профиле' },
+    { id: 'engraving', kind: 'engraving', price: 5000, group: 'Внешний вид',
+      name: 'Гравировка на карте', desc: 'Своя строка латиницей на лицевой стороне' },
+    { id: 'reissue', kind: 'reissue', price: 3000, group: 'Внешний вид',
+      name: 'Перевыпуск карты', desc: 'Новый номер карты и срок действия' },
+
+    { id: 'insurance', kind: 'consumable', price: 1200, group: 'Банковские услуги',
+      name: 'Страховка от просрочки', desc: 'Один раз отменяет штраф 25 процентов' },
+    { id: 'holidays', kind: 'holidays', price: 2000, group: 'Банковские услуги',
+      name: 'Кредитные каникулы', desc: 'Продлевают срок любого кредита на 3 дня' },
+    { id: 'bonus_boost', kind: 'boost', price: 1800, group: 'Банковские услуги',
+      name: 'Двойной бонус, 7 дней', desc: 'Бонус дня 100 вместо 50' },
+    { id: 'limit_up', kind: 'perk', price: 15000, group: 'Банковские услуги',
+      name: 'Повышенный кредитный лимит', desc: 'Кредиты до 150 000 навсегда' },
+    { id: 'cashback', kind: 'cashback', price: 20000, group: 'Банковские услуги',
+      name: 'Кэшбек с проигрышей', desc: 'Банк возвращает 5 процентов от проигранного в играх' }
   ];
+
+  const SHOP_GROUPS = ['Ящики и удача', 'Оформление карты', 'Внешний вид', 'Титулы', 'Банковские услуги'];
+
 
   class RemoteApi {
     constructor(url, key) {
@@ -209,6 +245,10 @@
 
     shopBuy(token, item) { return this.rpc('cb_shop_buy', { p_token: token, p_item: item }); }
     shopEquip(token, kind, value) { return this.rpc('cb_shop_equip', { p_token: token, p_kind: kind, p_value: value }); }
+    caseOpen(token) { return this.rpc('cb_case_open', { p_token: token }); }
+    engrave(token, text) { return this.rpc('cb_engrave', { p_token: token, p_text: text }); }
+    reissue(token) { return this.rpc('cb_reissue', { p_token: token }); }
+    creditExtend(token, id) { return this.rpc('cb_credit_extend', { p_token: token, p_credit: id }); }
 
     adminStats(token) { return this.rpc('cb_admin_stats', { p_token: token }); }
     adminUsers(token, q) { return this.rpc('cb_admin_users', { p_token: token, p_query: q || '' }); }
@@ -264,8 +304,10 @@
         phone: f.phone, email: f.email, pin_hash: await hashPin(f.phone, f.pin),
         balance: 0, created_at: new Date().toISOString(), last_bonus: null,
         role: owner ? 'admin' : 'client', blocked: false, blocked_reason: '',
-        inventory: { skins: ['base'], titles: [], insurance: 0, bonus_boost_until: null, limit_up: false, avatar: false },
+        inventory: { skins: ['base'], titles: [], insurance: 0, bonus_boost_until: null, limit_up: false,
+                     avatar: false, engraving: false, cases: 0, holidays: 0, cashback: false },
         equipped: { skin: 'base', title: '', avatar: '' },
+        engraving: '',
         settings: { theme: 'dark', hide_balance: false, sound: true, notify: true, public: true },
         ...card
       };
@@ -360,8 +402,13 @@
       if (stake > 0 && u.balance < stake) throw new Error('Недостаточно чекурублей для ставки');
       const delta = Math.round((payout - stake) * 100) / 100;
       this.push(db, u, delta, stake > 0 ? 'game_bet' : 'game_win', g.title, { game: g.game, stake, payout });
+      let cashback = 0;
+      if (u.inventory.cashback && delta < 0) {
+        cashback = Math.round(-delta * 5) / 100;
+        this.push(db, u, cashback, 'cashback', 'Кэшбек с проигрыша', { game: g.game });
+      }
       this.save(db);
-      return { balance: u.balance, delta };
+      return { balance: u.balance, delta, cashback };
     }
 
     async creditTake(token, amount, days) {
@@ -371,7 +418,7 @@
       if (!plan) throw new Error('Неизвестная программа кредитования');
       const limit = u.inventory.limit_up ? CREDIT_LIMIT_VIP : CREDIT_LIMIT;
       amount = Math.round(Number(amount) * 100) / 100;
-      if (!(amount >= 100 && amount <= limit)) throw new Error('Сумма кредита: от 100 до ' + limit + ' ₡');
+      if (!(amount >= 100 && amount <= limit)) throw new Error('Сумма кредита: от 100 до ' + limit + ' чекурублей');
       const active = db.credits.filter(c => c.user_id === u.id && c.status === 'active');
       if (active.length >= 3) throw new Error('Нельзя иметь больше трёх активных кредитов');
       const total = Math.round(amount * (1 + plan.rate / 100) * 100) / 100;
@@ -450,12 +497,23 @@
       if (item.kind === 'skin' && inv.skins.includes(item.value)) throw new Error('Скин уже куплен');
       if (item.kind === 'title' && inv.titles.includes(item.value)) throw new Error('Титул уже куплен');
       if (item.kind === 'perk' && inv.limit_up) throw new Error('Лимит уже повышен');
+      if (item.kind === 'cashback' && inv.cashback) throw new Error('Кэшбек уже подключён');
+      if (item.kind === 'engraving' && inv.engraving) throw new Error('Гравировка уже куплена');
+      if (item.kind === 'avatar' && inv.avatar) throw new Error('Уже куплено');
       if (u.balance < item.price) throw new Error('Недостаточно чекурублей');
       if (item.kind === 'skin') inv.skins.push(item.value);
       if (item.kind === 'title') inv.titles.push(item.value);
       if (item.kind === 'perk') inv.limit_up = true;
+      if (item.kind === 'cashback') inv.cashback = true;
+      if (item.kind === 'engraving') inv.engraving = true;
       if (item.kind === 'consumable') inv.insurance = (inv.insurance || 0) + 1;
-      if (item.kind === 'avatar') inv.avatar = true;
+      if (item.kind === 'holidays') inv.holidays = (inv.holidays || 0) + 1;
+      if (item.kind === 'case') inv.cases = (inv.cases || 0) + 1;
+      if (item.kind === 'reissue') {
+        let card = newCardFor(u.first_name, u.last_name);
+        while (db.users.some(x => x.card_number === card.card_number)) card = newCardFor(u.first_name, u.last_name);
+        u.card_number = card.card_number; u.card_exp = card.card_exp; u.card_cvv = card.card_cvv;
+      }
       if (item.kind === 'boost') {
         const base = inv.bonus_boost_until && new Date(inv.bonus_boost_until) > new Date()
           ? new Date(inv.bonus_boost_until).getTime() : Date.now();
@@ -464,6 +522,59 @@
       this.push(db, u, -item.price, 'shop', 'Покупка: ' + item.name, { item: item.id });
       this.save(db);
       return { balance: u.balance, user: this.pub(u) };
+    }
+
+    async caseOpen(token) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (!(u.inventory.cases > 0)) throw new Error('Ящиков нет — купите в магазине');
+      u.inventory.cases--;
+      const roll = Math.random() * 100;
+      let prize;
+      if (roll < 1 && !u.inventory.skins.includes('goldbank')) prize = { skin: 'goldbank', amount: 0 };
+      else if (roll < 21) prize = { amount: 0 };
+      else if (roll < 46) prize = { amount: 200 };
+      else if (roll < 66) prize = { amount: 500 };
+      else if (roll < 81) prize = { amount: 1000 };
+      else if (roll < 91) prize = { amount: 2500 };
+      else if (roll < 98) prize = { amount: 5000 };
+      else prize = { amount: 10000 };
+      if (prize.skin) u.inventory.skins.push(prize.skin);
+      const title = prize.skin ? 'Ящик чекушек: оформление «Золото банка»'
+        : prize.amount ? 'Ящик чекушек: выигрыш' : 'Ящик чекушек: пусто';
+      this.push(db, u, prize.amount || 0, 'case', title, {});
+      this.save(db);
+      return { prize, balance: u.balance, user: this.pub(u) };
+    }
+
+    async engrave(token, text) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (!u.inventory.engraving) throw new Error('Гравировка не куплена');
+      const clean = String(text || '').toUpperCase().replace(/[^A-Z0-9 .\-]/g, '').slice(0, 16).trim();
+      u.engraving = clean;
+      this.save(db);
+      return { user: this.pub(u) };
+    }
+
+    async reissue(token) {
+      const db = this.db(); const u = this.byToken(db, token);
+      let card = newCardFor(u.first_name, u.last_name);
+      while (db.users.some(x => x.card_number === card.card_number)) card = newCardFor(u.first_name, u.last_name);
+      u.card_number = card.card_number; u.card_exp = card.card_exp; u.card_cvv = card.card_cvv;
+      this.save(db);
+      return { user: this.pub(u) };
+    }
+
+    async creditExtend(token, id) {
+      const db = this.db(); const u = this.byToken(db, token);
+      if (!(u.inventory.holidays > 0)) throw new Error('Кредитных каникул нет — купите в магазине');
+      const c = db.credits.find(x => x.id === id && x.user_id === u.id);
+      if (!c || c.status !== 'active') throw new Error('Кредит не найден или уже закрыт');
+      u.inventory.holidays--;
+      c.due_at = new Date(new Date(c.due_at).getTime() + 3 * 864e5).toISOString();
+      c.days += 3;
+      this.push(db, u, 0, 'credit', 'Кредитные каникулы: срок продлён на 3 дня', { credit: c.id });
+      this.save(db);
+      return { credit: c };
     }
 
     async shopEquip(token, kind, value) {
@@ -616,6 +727,6 @@
     createApi, readOverride, writeOverride, RemoteApi, LocalApi,
     utils: { translit, normalizePhone, prettyPhone, isEmail, luhnCheckDigit, uid },
     consts: { WELCOME_BONUS, CREDIT_PLANS, PENALTY_RATE, CREDIT_LIMIT, CREDIT_LIMIT_VIP,
-              SHOP, SKINS, AVATAR_COLORS, ROLES, OWNER }
+              SHOP, SHOP_GROUPS, SKINS, AVATAR_COLORS, ROLES, OWNER }
   };
 })(window);

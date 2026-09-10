@@ -13,8 +13,23 @@
 
   const S = { api: null, token: null, user: null, tx: [], credits: [], tab: 'home', clients: 0, busy: false };
 
-  const money = v => (Math.round(v * 100) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const cur = v => money(v) + ' ₡';
+  const money = v => {
+    const n = Math.round(v * 100) / 100;
+    return Number.isInteger(n)
+      ? n.toLocaleString('ru-RU')
+      : n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const unit = v => {
+    const n = Math.abs(Math.round(v * 100) / 100);
+    if (!Number.isInteger(n)) return 'чекурубля';
+    const t = n % 100, o = n % 10;
+    if (t > 10 && t < 20) return 'чекурублей';
+    if (o === 1) return 'чекурубль';
+    if (o >= 2 && o <= 4) return 'чекурубля';
+    return 'чекурублей';
+  };
+  const cur = v => money(v) + ' ' + unit(v);
+  const num = v => (v > 0 ? '+' : v < 0 ? '−' : '') + money(Math.abs(v));
   const signed = v => (v > 0 ? '+' : '−') + cur(Math.abs(v));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const cardMask = n => String(n || '').replace(/(\d{4})(?=\d)/g, '$1 ');
@@ -107,6 +122,7 @@
         <div class="bc-chip"></div>
       </div>
       <div class="bc-num">${cardMask(u.card_number)}</div>
+      ${u.engraving ? `<div class="bc-engrave">${esc(u.engraving)}</div>` : ''}
       <div class="bc-bot">
         <div>
           <div class="bc-lbl">CARDHOLDER</div>
@@ -344,7 +360,7 @@
     v.appendChild(card);
 
     const bal = el('div', 'card');
-    const amount = hidden() ? '••••••' : money(u.balance) + ' <small>₡</small>';
+    const amount = hidden() ? '••••••' : money(u.balance) + ' <small>' + unit(u.balance) + '</small>';
     bal.innerHTML = `
       <div class="balance">
         <div class="sub">Баланс счёта · чекурубли</div>
@@ -407,7 +423,7 @@
 
   const TX_ICONS = {
     transfer_in: '+', transfer_out: '−', bonus: '★', game_bet: '×', game_win: '×',
-    credit: 'К', credit_pay: 'П', penalty: '!', shop: 'М', emission: 'Б'
+    credit: 'К', credit_pay: 'П', penalty: '!', shop: 'М', emission: 'Б', case: 'Я', cashback: 'В'
   };
 
   function txRow(t) {
@@ -418,11 +434,11 @@
         <div class="tx-t">${esc(t.title)}</div>
         <div class="tx-d">${when(t.ts)}${t.meta && t.meta.note ? ' · ' + esc(t.meta.note) : ''}</div>
       </div>
-      <div class="tx-a ${t.amount >= 0 ? 'pos' : 'neg'}">${signed(t.amount)}</div>`;
+      <div class="tx-a ${t.amount > 0 ? 'pos' : t.amount < 0 ? 'neg' : 'muted'}">${num(t.amount) || '0'}</div>`;
     row.onclick = () => modal('Операция', b => {
       b.innerHTML = `
         <div class="kv"><span>Описание</span><b>${esc(t.title)}</b></div>
-        <div class="kv"><span>Сумма</span><b class="${t.amount >= 0 ? 'pos' : 'neg'}">${signed(t.amount)}</b></div>
+        <div class="kv"><span>Сумма</span><b class="${t.amount > 0 ? 'pos' : t.amount < 0 ? 'neg' : ''}">${t.amount ? signed(t.amount) : 'без движения по счёту'}</b></div>
         <div class="kv"><span>Дата</span><b>${new Date(t.ts).toLocaleString('ru-RU')}</b></div>
         <div class="kv"><span>Баланс после</span><b>${cur(t.balance_after)}</b></div>
         ${t.meta && t.meta.note ? `<div class="kv"><span>Сообщение</span><b>${esc(t.meta.note)}</b></div>` : ''}
@@ -445,7 +461,7 @@
         <div class="kv"><span>CVV</span><b class="mono">${esc(u.card_cvv)}</b></div>
         <div class="kv"><span>Счёт</span><b class="mono">${esc(u.account_number)}</b></div>
         <div class="kv"><span>Платёжная система</span><b>Чекунец Pay</b></div>
-        <div class="kv"><span>Валюта счёта</span><b>чекурубль ₡</b></div>`));
+        <div class="kv"><span>Валюта счёта</span><b>чекурубль</b></div>`));
       const copy = el('button', 'btn full', 'Скопировать номер карты');
       copy.onclick = () => {
         navigator.clipboard?.writeText(u.card_number).then(() => ok('Номер скопирован'), () => bad('Не удалось скопировать'));
@@ -458,7 +474,7 @@
     modal('Перевод клиенту банка', (b, m) => {
       b.appendChild(el('p', 'muted', 'Введите телефон получателя (+7…), либо номер его карты или счёта.'));
       const f1 = el('label', 'field', '<span>Получатель</span><input id="tr-to" placeholder="+7 (___) ___-__-__"><em class="err"></em>');
-      const f2 = el('label', 'field', '<span>Сумма, ₡</span><input id="tr-sum" inputmode="decimal" placeholder="100"><em class="err"></em>');
+      const f2 = el('label', 'field', '<span>Сумма, чекурубли</span><input id="tr-sum" inputmode="decimal" placeholder="100"><em class="err"></em>');
       const f3 = el('label', 'field', '<span>Сообщение (необязательно)</span><input id="tr-note" maxlength="60" placeholder="за пиццу"></label>');
       b.append(f1, f2, f3);
       const found = el('div', 'muted', '');
@@ -483,7 +499,7 @@
 
       const quick = el('div', 'actions');
       [100, 500, 1000].forEach(s => {
-        const q = el('button', 'act', `<span>${s} ₡</span>`);
+        const q = el('button', 'act', `<span>${money(s)}</span>`);
         q.onclick = () => { f2.querySelector('input').value = s; };
         quick.appendChild(q);
       });
@@ -581,14 +597,20 @@
 
   const GAMES = [
     { id: 'clicker', name: 'Смена в банке', desc: 'Кликайте 10 секунд — получайте чекурубли. Без ставки.', risky: false, run: gameClicker },
-    { id: 'quiz', name: 'Викторина', desc: '5 вопросов о деньгах. По 15 ₡ за верный ответ.', risky: false, run: gameQuiz },
+    { id: 'quiz', name: 'Викторина', desc: '5 вопросов о деньгах. По 15 чекурублей за верный ответ.', risky: false, run: gameQuiz },
     { id: 'coin', name: 'Орёл или решка', desc: 'Ставка ×1.95 при угадывании.', risky: true, run: gameCoin },
     { id: 'dice', name: 'Кости против банка', desc: 'Ваши два кубика против банковских. Больше — ×2.', risky: true, run: gameDice },
     { id: 'wheel', name: 'Колесо фортуны', desc: 'Сектора от ×0 до ×10.', risky: true, run: gameWheel },
-    { id: 'crash', name: 'Краш', desc: 'Множитель растёт — успейте забрать до обвала.', risky: true, run: gameCrash }
+    { id: 'crash', name: 'Краш', desc: 'Множитель растёт — успейте забрать до обвала.', risky: true, run: gameCrash },
+    { id: 'memory', name: 'Ревизия склада', desc: 'Запомните порядок ящиков и повторите. По 20 за раунд.', risky: false, run: gameMemory },
+    { id: 'cups', name: 'Три стопки', desc: 'Под одной из трёх спрятана чекушка. Угадали — ×2.7.', risky: true, run: gameCups },
+    { id: 'cellar', name: 'Погреб', desc: 'Открывайте полки с чекушками. Наткнулись на пустую — всё сгорает.', risky: true, run: gameCellar },
+    { id: 'slots', name: 'Барабаны', desc: 'Три одинаковых знака — до ×20.', risky: true, run: gameSlots },
+    { id: 'tower', name: 'Башня', desc: 'Пять этажей, на каждом одна дверь проигрышная. ×1.4 за этаж.', risky: true, run: gameTower },
+    { id: 'hilo', name: 'Больше или меньше', desc: 'Угадывайте, какая карта следующая. Множитель копится.', risky: true, run: gameHiLo }
   ];
 
-  const COOLDOWN = { clicker: 120e3, quiz: 300e3 };
+  const COOLDOWN = { clicker: 120e3, quiz: 300e3, memory: 180e3 };
 
   function cooldownLeft(id) {
     if (!COOLDOWN[id]) return 0;
@@ -600,7 +622,7 @@
   function viewGames(v) {
     const balCard = el('div', 'card');
     balCard.innerHTML = `<div class="balance"><div class="sub">Доступно для игры</div>
-      <div class="amount">${hidden() ? '••••' : money(S.user.balance)} <small>₡</small></div></div>`;
+      <div class="amount">${hidden() ? '••••' : money(S.user.balance)} <small>${unit(S.user.balance)}</small></div></div>`;
     v.appendChild(balCard);
 
     const gTx = S.tx.filter(t => t.category.startsWith('game'));
@@ -647,11 +669,11 @@
   }
 
   function stakeField(b, max) {
-    const f = el('label', 'field', '<span>Ставка, ₡</span><input inputmode="decimal" value="50"><em class="err"></em>');
+    const f = el('label', 'field', '<span>Ставка, чекурубли</span><input inputmode="decimal" value="50"><em class="err"></em>');
     b.appendChild(f);
     const row = el('div', 'actions');
     [50, 100, 500].forEach(s => {
-      const q = el('button', 'act', `<span>${s} ₡</span>`);
+      const q = el('button', 'act', `<span>${money(s)}</span>`);
       q.onclick = () => f.querySelector('input').value = s;
       row.appendChild(q);
     });
@@ -907,7 +929,7 @@
     const head = el('div', 'card');
     head.innerHTML = `<div class="balance">
       <div class="sub">Текущая задолженность</div>
-      <div class="amount ${debt ? 'neg' : ''}">${money(debt)} <small>₡</small></div>
+      <div class="amount ${debt ? 'neg' : ''}">${money(debt)} <small>${unit(debt)}</small></div>
       <div class="sub">${active.length ? 'Активных кредитов: ' + active.length : 'Кредитов нет — можно взять'}</div></div>`;
     v.appendChild(head);
 
@@ -916,11 +938,12 @@
     v.appendChild(take);
 
     v.appendChild(el('div', 'card', `
-      <div class="kv"><span>Сумма</span><b>от 100 до ${money(creditLimit())} ₡</b></div>
+      <div class="kv"><span>Сумма</span><b>от 100 до ${money(creditLimit())}</b></div>
       <div class="kv"><span>Ставка</span><b>${C.CREDIT_PLANS.map(p => p.rate + '% / ' + p.label).join(' · ')}</b></div>
       <div class="kv"><span>Максимум кредитов</span><b>3 активных</b></div>
       <div class="kv"><span>Просрочка</span><b class="neg">списание долга + штраф ${C.PENALTY_RATE}%</b></div>
-      <div class="kv"><span>Страховки в запасе</span><b>${inv().insurance || 0} шт.</b></div>
+      <div class="kv"><span>Страховки в запасе</span><b>${inv().insurance || 0}</b></div>
+      <div class="kv"><span>Кредитные каникулы</span><b>${inv().holidays || 0}</b></div>
       <div class="empty" style="padding:8px 0 0;text-align:left">Если не погасить кредит до срока, банк спишет весь остаток и штраф со счёта — баланс может уйти в минус.</div>`));
 
     v.appendChild(el('div', 'sec-title', 'Мои кредиты'));
@@ -948,6 +971,17 @@
         const pay = el('button', 'btn primary mini full', 'Погасить');
         pay.onclick = () => payModal(c);
         box.appendChild(pay);
+        if (inv().holidays > 0) {
+          const ext = el('button', 'btn mini full', 'Каникулы: продлить на 3 дня');
+          ext.onclick = () => confirmBox('Кредитные каникулы',
+            'Срок вырастет на 3 дня, одни каникулы будут потрачены. Продолжить?',
+            () => guard(async () => {
+              await S.api.creditExtend(S.token, c.id);
+              await refresh(); render();
+              ok('Срок кредита продлён на 3 дня');
+            }));
+          box.appendChild(ext);
+        }
       }
       v.appendChild(box);
     });
@@ -957,7 +991,7 @@
 
   function creditModal() {
     modal('Кредит в Чекунец Банке', (b, m) => {
-      const f = el('label', 'field', '<span>Сумма, ₡</span><input inputmode="decimal" value="1000"><em class="err"></em>');
+      const f = el('label', 'field', '<span>Сумма, чекурубли</span><input inputmode="decimal" value="1000"><em class="err"></em>');
       b.appendChild(f);
       let plan = C.CREDIT_PLANS[1];
       const seg = el('div', 'seg');
@@ -1003,9 +1037,9 @@
         <div class="kv"><span>Остаток долга</span><b>${cur(rest)}</b></div>
         <div class="kv"><span>Срок</span><b>${left(c.due_at)}</b></div>
         <div class="kv"><span>Ваш баланс</span><b>${cur(S.user.balance)}</b></div>`));
-      const f = el('label', 'field', `<span>Сумма платежа, ₡</span><input inputmode="decimal" value="${rest}"><em class="err"></em>`);
+      const f = el('label', 'field', `<span>Сумма платежа, чекурубли</span><input inputmode="decimal" value="${rest}"><em class="err"></em>`);
       b.appendChild(f);
-      const all = el('button', 'btn full', 'Погасить полностью — ' + cur(rest));
+      const all = el('button', 'btn full', 'Погасить полностью: ' + cur(rest));
       all.onclick = () => { f.querySelector('input').value = rest; pay(); };
       const go = el('button', 'btn primary full', 'Внести платёж');
       const pay = () => guard(async () => {
@@ -1069,7 +1103,7 @@
     danger.append(out, del);
     v.appendChild(danger);
 
-    v.appendChild(el('div', 'empty', 'Чекунец Банк · версия 1.0 · валюта: чекурубль ₡' +
+    v.appendChild(el('div', 'empty', 'Чекунец Банк · версия 1.0 · валюта: чекурубль' +
       (S.clients ? '<br>клиентов в банке: ' + S.clients : '')));
   }
 
@@ -1165,7 +1199,7 @@
       <div class="kv"><span>Номер карты</span><b class="mono">${cardShort(u.card_number)}</b></div>
       <div class="kv"><span>Срок действия</span><b>${esc(u.card_exp)}</b></div>
       <div class="kv"><span>Номер счёта</span><b class="mono">${esc(u.account_number)}</b></div>
-      <div class="kv"><span>Валюта</span><b>чекурубль ₡</b></div>
+      <div class="kv"><span>Валюта</span><b>чекурубль</b></div>
       <div class="kv"><span>Баланс</span><b>${cur(u.balance)}</b></div>`);
     const openCard = el('button', 'btn full mini', 'Показать карту полностью');
     openCard.style.marginTop = '10px';
@@ -1225,12 +1259,367 @@
     });
   }
 
+  function gameMemory() {
+    const CELLS = 9;
+    let round = 1, earned = 0;
+    modal('Ревизия склада', (b, m) => {
+      const info = el('div', 'muted', '');
+      info.style.textAlign = 'center';
+      const grid = el('div', 'pad');
+      const status = el('div', 'muted', 'Запоминайте порядок');
+      status.style.textAlign = 'center';
+      b.append(info, grid, status);
+      const cells = [];
+      for (let i = 0; i < CELLS; i++) {
+        const c = el('button', 'pad-cell', String(i + 1));
+        c.disabled = true;
+        grid.appendChild(c);
+        cells.push(c);
+      }
+
+      const finish = () => {
+        markPlayed('memory');
+        settle('memory', 0, earned, 'Ревизия склада: раундов ' + (round - 1)).then(() => {
+          m.close();
+          earned ? ok('Начислено ' + cur(earned)) : bad('Ни одного раунда');
+        });
+      };
+
+      const play = () => {
+        if (round > 5) return finish();
+        info.textContent = 'Раунд ' + round + ' из 5 · заработано ' + money(earned);
+        const seq = [];
+        while (seq.length < round + 1) {
+          const x = Math.floor(Math.random() * CELLS);
+          if (seq[seq.length - 1] !== x) seq.push(x);
+        }
+        status.textContent = 'Запоминайте';
+        cells.forEach(c => c.disabled = true);
+        let i = 0;
+        const show = setInterval(() => {
+          if (i > 0) cells[seq[i - 1]].classList.remove('lit');
+          if (i >= seq.length) {
+            clearInterval(show);
+            status.textContent = 'Повторите порядок';
+            cells.forEach(c => c.disabled = false);
+            let k = 0;
+            cells.forEach((c, idx) => c.onclick = () => {
+              c.classList.add('lit');
+              setTimeout(() => c.classList.remove('lit'), 180);
+              if (idx !== seq[k]) {
+                cells.forEach(x => x.disabled = true);
+                status.innerHTML = '<b class="neg">Ошибка в порядке</b>';
+                setTimeout(finish, 700);
+                return;
+              }
+              if (++k === seq.length) {
+                earned += 20;
+                round++;
+                cells.forEach(x => x.disabled = true);
+                status.innerHTML = '<b class="pos">Верно</b>';
+                setTimeout(play, 700);
+              }
+            });
+            return;
+          }
+          cells[seq[i]].classList.add('lit');
+          i++;
+        }, 620);
+      };
+      play();
+    }, { sticky: true });
+  }
+
+  function gameCups() {
+    modal('Три стопки', (b, m) => {
+      const getStake = stakeField(b);
+      const status = el('div', 'muted', 'Под одной из стопок чекушка');
+      status.style.textAlign = 'center';
+      b.appendChild(status);
+      const row = el('div', 'grid3');
+      const cups = [0, 1, 2].map(i => {
+        const c = el('button', 'cup', 'Стопка ' + (i + 1));
+        row.appendChild(c);
+        return c;
+      });
+      b.appendChild(row);
+      let played = false;
+      cups.forEach((c, i) => c.onclick = () => {
+        if (played) return;
+        let stake;
+        try { stake = getStake(); } catch (e) { return bad(e.message); }
+        played = true;
+        const win = Math.floor(Math.random() * 3);
+        cups.forEach((x, j) => {
+          x.textContent = j === win ? 'Чекушка' : 'Пусто';
+          x.classList.add(j === win ? 'good' : 'gone');
+        });
+        const payout = i === win ? Math.round(stake * 2.7 * 100) / 100 : 0;
+        status.innerHTML = payout
+          ? '<b class="pos">Угадали: ' + cur(payout) + '</b>'
+          : '<b class="neg">Мимо</b>';
+        settle('cups', stake, payout, payout ? 'Три стопки: выигрыш' : 'Три стопки: проигрыш').then(() => {
+          setTimeout(() => { m.close(); payout ? ok('Выигрыш ' + cur(payout)) : bad('Ставка проиграна'); }, 900);
+        });
+      });
+    }, { sticky: true });
+  }
+
+  function gameCellar() {
+    const SIZE = 25, EMPTY = 5;
+    modal('Погреб', (b, m) => {
+      const getStake = stakeField(b);
+      const info = el('div', 'muted', 'На 25 полок — 5 пустых. Забирайте вовремя.');
+      info.style.textAlign = 'center';
+      const grid = el('div', 'mines');
+      b.append(info, grid);
+      const take = el('button', 'btn full', 'Забрать');
+      const start = el('button', 'btn primary full', 'Спуститься в погреб');
+      b.append(start, take);
+      take.disabled = true;
+
+      let stake = 0, opened = 0, mult = 1, bad_ = [], over = false;
+      const cells = [];
+      for (let i = 0; i < SIZE; i++) {
+        const c = el('button', 'mine', '');
+        c.disabled = true;
+        grid.appendChild(c);
+        cells.push(c);
+      }
+
+      const multFor = k => {
+        let p = 1;
+        for (let i = 0; i < k; i++) p *= (SIZE - EMPTY - i) / (SIZE - i);
+        return Math.min(20, Math.round(0.95 / p * 100) / 100);
+      };
+
+      const finish = (payout, text, good) => {
+        if (over) return; over = true;
+        cells.forEach((c, i) => {
+          c.disabled = true;
+          if (bad_.includes(i) && !c.classList.contains('open')) c.classList.add('boom');
+        });
+        take.disabled = true;
+        info.innerHTML = '<b class="' + (good ? 'pos' : 'neg') + '">' + text + '</b>';
+        settle('cellar', stake, payout, 'Погреб: открыто полок ' + opened).then(() => {
+          setTimeout(() => { m.close(); good ? ok('Забрано ' + cur(payout)) : bad('Пустая полка'); }, 900);
+        });
+      };
+
+      start.onclick = () => {
+        try { stake = getStake(); } catch (e) { return bad(e.message); }
+        start.disabled = true; take.disabled = false;
+        while (bad_.length < EMPTY) {
+          const x = Math.floor(Math.random() * SIZE);
+          if (!bad_.includes(x)) bad_.push(x);
+        }
+        cells.forEach((c, i) => {
+          c.disabled = false;
+          c.onclick = () => {
+            if (over || c.classList.contains('open')) return;
+            if (bad_.includes(i)) {
+              c.classList.add('boom');
+              return finish(0, 'Пустая полка на ' + (opened + 1) + '-м шаге', false);
+            }
+            c.classList.add('open');
+            c.textContent = 'ЧК';
+            opened++;
+            mult = multFor(opened);
+            info.textContent = 'Открыто ' + opened + ' · множитель ×' + mult.toFixed(2) +
+              ' · к выдаче ' + money(Math.round(stake * mult * 100) / 100);
+            if (mult >= 20) finish(Math.round(stake * 20 * 100) / 100, 'Максимум ×20', true);
+          };
+        });
+      };
+
+      take.onclick = () => {
+        if (!opened) return bad('Откройте хотя бы одну полку');
+        finish(Math.round(stake * mult * 100) / 100, 'Забрано на ×' + mult.toFixed(2), true);
+      };
+    }, { sticky: true });
+  }
+
+  const REELS = ['ЧК', 'БАР', '7', 'СТОП', 'КЛЮЧ'];
+  function gameSlots() {
+    modal('Барабаны', (b, m) => {
+      const getStake = stakeField(b);
+      const stage = el('div', 'game-stage', '');
+      const row = el('div', 'reels');
+      const cells = [0, 1, 2].map(() => {
+        const c = el('div', 'reel', '—');
+        row.appendChild(c);
+        return c;
+      });
+      const label = el('div', 'muted', 'Три «7» — ×20, три «ЧК» — ×10, любые три — ×5, две — ×1.2');
+      stage.append(row, label);
+      b.appendChild(stage);
+      const go = el('button', 'btn primary full', 'Крутить');
+      go.onclick = () => {
+        let stake;
+        try { stake = getStake(); } catch (e) { return bad(e.message); }
+        go.disabled = true;
+        const res = [0, 1, 2].map(() => REELS[Math.floor(Math.random() * REELS.length)]);
+        let ticks = 0;
+        const spin = setInterval(() => {
+          cells.forEach(c => c.textContent = REELS[Math.floor(Math.random() * REELS.length)]);
+          if (++ticks > 12) {
+            clearInterval(spin);
+            cells.forEach((c, i) => c.textContent = res[i]);
+            const same = res[0] === res[1] && res[1] === res[2];
+            const pair = res[0] === res[1] || res[1] === res[2] || res[0] === res[2];
+            let k = 0;
+            if (same) k = res[0] === '7' ? 20 : res[0] === 'ЧК' ? 10 : 5;
+            else if (pair) k = 1.2;
+            const payout = Math.round(stake * k * 100) / 100;
+            label.innerHTML = k
+              ? '<b class="' + (payout > stake ? 'pos' : '') + '">×' + k + ' — ' + cur(payout) + '</b>'
+              : '<b class="neg">Ничего не выпало</b>';
+            settle('slots', stake, payout, 'Барабаны ×' + k).then(() => {
+              setTimeout(() => { m.close(); payout > stake ? ok('Выигрыш ' + cur(payout)) : bad('Ставка проиграна'); }, 1000);
+            });
+          }
+        }, 90);
+      };
+      b.appendChild(go);
+    }, { sticky: true });
+  }
+
+  function gameTower() {
+    const FLOORS = 5;
+    modal('Башня', (b, m) => {
+      const getStake = stakeField(b);
+      const info = el('div', 'muted', 'На каждом этаже одна дверь из трёх — проигрышная');
+      info.style.textAlign = 'center';
+      const box = el('div', 'tower');
+      b.append(info, box);
+      const start = el('button', 'btn primary full', 'Войти в башню');
+      const take = el('button', 'btn full', 'Забрать');
+      take.disabled = true;
+      b.append(start, take);
+
+      let stake = 0, floor = 0, mult = 1, over = false;
+      const rows = [];
+      for (let f = FLOORS - 1; f >= 0; f--) {
+        const r = el('div', 'tower-row');
+        r.dataset.floor = f;
+        [0, 1, 2].map(d => {
+          const btn = el('button', 'door', 'дверь');
+          btn.disabled = true;
+          btn.onclick = () => pick(f, d, btn, r);
+          r.appendChild(btn);
+        });
+        box.appendChild(r);
+        rows.push(r);
+      }
+
+      const arm = () => {
+        rows.forEach(r => [...r.children].forEach(c => c.disabled = +r.dataset.floor !== floor || over));
+      };
+
+      const finish = (payout, text, good) => {
+        if (over) return; over = true;
+        arm();
+        info.innerHTML = '<b class="' + (good ? 'pos' : 'neg') + '">' + text + '</b>';
+        settle('tower', stake, payout, 'Башня: этажей ' + floor).then(() => {
+          setTimeout(() => { m.close(); good ? ok('Забрано ' + cur(payout)) : bad('Не та дверь'); }, 900);
+        });
+      };
+
+      function pick(f, d, btn, r) {
+        if (over || f !== floor) return;
+        const badDoor = Math.floor(Math.random() * 3);
+        [...r.children].forEach((c, i) => {
+          c.textContent = i === badDoor ? 'пусто' : 'чекушка';
+          c.classList.add(i === badDoor ? 'gone' : 'good');
+        });
+        if (d === badDoor) return finish(0, 'Пустая дверь на ' + (floor + 1) + '-м этаже', false);
+        floor++;
+        mult = Math.round(Math.pow(1.4, floor) * 100) / 100;
+        take.disabled = false;
+        info.textContent = 'Этаж ' + floor + ' · множитель ×' + mult.toFixed(2) +
+          ' · к выдаче ' + money(Math.round(stake * mult * 100) / 100);
+        if (floor >= FLOORS) return finish(Math.round(stake * mult * 100) / 100, 'Вершина башни ×' + mult.toFixed(2), true);
+        arm();
+      }
+
+      start.onclick = () => {
+        try { stake = getStake(); } catch (e) { return bad(e.message); }
+        start.disabled = true;
+        arm();
+      };
+      take.onclick = () => finish(Math.round(stake * mult * 100) / 100, 'Забрано на ×' + mult.toFixed(2), true);
+    }, { sticky: true });
+  }
+
+  function gameHiLo() {
+    modal('Больше или меньше', (b, m) => {
+      const getStake = stakeField(b);
+      const stage = el('div', 'game-stage', '');
+      const card = el('div', 'hilo-card', '?');
+      const info = el('div', 'muted', 'Карты от 1 до 13. Равенство возвращает ход.');
+      stage.append(card, info);
+      b.appendChild(stage);
+      const row = el('div', 'grid2');
+      const up = el('button', 'btn primary', 'Больше');
+      const down = el('button', 'btn primary', 'Меньше');
+      row.append(up, down);
+      const start = el('button', 'btn primary full', 'Начать');
+      const take = el('button', 'btn full', 'Забрать');
+      take.disabled = true;
+      b.append(start, row, take);
+      up.disabled = down.disabled = true;
+
+      let stake = 0, cur_ = 0, mult = 1, over = false, steps = 0;
+
+      const finish = (payout, text, good) => {
+        if (over) return; over = true;
+        up.disabled = down.disabled = take.disabled = true;
+        info.innerHTML = '<b class="' + (good ? 'pos' : 'neg') + '">' + text + '</b>';
+        settle('hilo', stake, payout, 'Больше или меньше: ходов ' + steps).then(() => {
+          setTimeout(() => { m.close(); good ? ok('Забрано ' + cur(payout)) : bad('Не угадали'); }, 900);
+        });
+      };
+
+      const guess = high => {
+        if (over) return;
+        const next = 1 + Math.floor(Math.random() * 13);
+        const good = high ? Math.max(0, 13 - cur_) : Math.max(0, cur_ - 1);
+        card.textContent = next;
+        if (next === cur_) {
+          info.textContent = 'Равенство — ход не считается. Текущий множитель ×' + mult.toFixed(2);
+          return;
+        }
+        const hit = high ? next > cur_ : next < cur_;
+        if (!hit) return finish(0, 'Выпало ' + next + ' — мимо', false);
+        steps++;
+        mult = Math.min(20, Math.round(mult * (0.95 * 13 / good) * 100) / 100);
+        cur_ = next;
+        take.disabled = false;
+        info.textContent = 'Множитель ×' + mult.toFixed(2) + ' · к выдаче ' +
+          money(Math.round(stake * mult * 100) / 100);
+        if (mult >= 20) finish(Math.round(stake * 20 * 100) / 100, 'Максимум ×20', true);
+      };
+
+      start.onclick = () => {
+        try { stake = getStake(); } catch (e) { return bad(e.message); }
+        start.disabled = true;
+        up.disabled = down.disabled = false;
+        cur_ = 1 + Math.floor(Math.random() * 13);
+        card.textContent = cur_;
+        info.textContent = 'Что дальше — больше или меньше?';
+      };
+      up.onclick = () => guess(true);
+      down.onclick = () => guess(false);
+      take.onclick = () => finish(Math.round(stake * mult * 100) / 100, 'Забрано на ×' + mult.toFixed(2), true);
+    }, { sticky: true });
+  }
+
   function viewShop(v) {
     const u = S.user, i = inv();
 
     const bal = el('div', 'card');
     bal.innerHTML = `<div class="balance"><div class="sub">Доступно к тратам</div>
-      <div class="amount ${u.balance < 0 ? 'neg' : ''}">${hidden() ? '••••' : money(u.balance)} <small>₡</small></div>
+      <div class="amount ${u.balance < 0 ? 'neg' : ''}">${hidden() ? '••••' : money(u.balance)} <small>${unit(u.balance)}</small></div>
       <div class="sub">Заработать можно в разделе «Игры»</div></div>`;
     v.appendChild(bal);
 
@@ -1239,7 +1628,7 @@
     preview.style.background = skinCss(u);
     v.appendChild(preview);
 
-    v.appendChild(el('div', 'sec-title', 'Оформление карты'));
+    v.appendChild(el('div', 'sec-title', 'Моя карта'));
     const skins = el('div', 'skins');
     Object.entries(C.SKINS).forEach(([id, sk]) => {
       const owned = id === 'base' || (i.skins || []).includes(id);
@@ -1248,13 +1637,13 @@
       const t = el('button', 'skin' + (on ? ' on' : ''),
         `<span class="skin-dot" style="background:${sk.css}"></span>
          <b>${esc(sk.name)}</b>
-         <span class="muted">${owned ? (on ? 'на карте' : 'нажмите, чтобы надеть') : cur(item ? item.price : 0)}</span>`);
+         <span class="muted">${owned ? (on ? 'на карте' : 'нажмите, чтобы надеть') : money(item ? item.price : 0)}</span>`);
       t.onclick = () => owned ? equip('skin', id) : buy(item.id);
       skins.appendChild(t);
     });
     v.appendChild(skins);
 
-    v.appendChild(el('div', 'sec-title', 'Титулы'));
+    v.appendChild(el('div', 'sec-title', 'Мои титулы'));
     const titles = el('div', 'card');
     const owned = i.titles || [];
     if (owned.length) {
@@ -1272,7 +1661,7 @@
     v.appendChild(titles);
 
     if (i.avatar) {
-      v.appendChild(el('div', 'sec-title', 'Цвет значка'));
+      v.appendChild(el('div', 'sec-title', 'Мой значок'));
       const row = el('div', 'av-row');
       Object.entries(C.AVATAR_COLORS).forEach(([id, c]) => {
         const b = el('button', 'av-btn' + (u.equipped && u.equipped.avatar === id ? ' on' : ''),
@@ -1290,34 +1679,121 @@
       v.appendChild(row);
     }
 
-    v.appendChild(el('div', 'sec-title', 'Товары банка'));
+    v.appendChild(el('div', 'sec-title', 'Витрина'));
     const boostLeft = i.bonus_boost_until && new Date(i.bonus_boost_until) > new Date()
       ? left(i.bonus_boost_until) : null;
-    C.SHOP.forEach(it => {
-      const has =
-        (it.kind === 'skin' && (i.skins || []).includes(it.value)) ||
-        (it.kind === 'title' && (i.titles || []).includes(it.value)) ||
-        (it.kind === 'perk' && i.limit_up) ||
-        (it.kind === 'avatar' && i.avatar);
-      const box = el('div', 'good');
-      box.innerHTML = `<div class="good-ico">${it.icon}</div>
-        <div class="good-main"><b>${esc(it.name)}</b><span class="muted">${esc(it.desc)}</span>
-        ${it.id === 'insurance' && i.insurance ? `<span class="muted">в запасе: ${i.insurance}</span>` : ''}
-        ${it.id === 'bonus_boost' && boostLeft ? `<span class="muted">активен ещё ${boostLeft}</span>` : ''}</div>`;
-      const btn = el('button', 'btn mini ' + (has ? '' : 'primary'), has ? 'куплено' : money(it.price) + ' ₡');
-      btn.disabled = has;
-      btn.onclick = () => buy(it.id);
-      box.appendChild(btn);
+
+    if (i.cases > 0) {
+      const box = el('div', 'card highlight');
+      box.innerHTML = `<div class="kv"><span>Нераспечатанных ящиков</span><b>${i.cases}</b></div>`;
+      const open = el('button', 'btn primary full', 'Открыть ящик чекушек');
+      open.onclick = openCase;
+      box.appendChild(open);
       v.appendChild(box);
+    }
+
+    C.SHOP_GROUPS.forEach(group => {
+      const items = C.SHOP.filter(it => it.group === group);
+      if (!items.length) return;
+      v.appendChild(el('div', 'sec-title', group));
+      items.forEach(it => {
+        const has =
+          (it.kind === 'skin' && (i.skins || []).includes(it.value)) ||
+          (it.kind === 'title' && (i.titles || []).includes(it.value)) ||
+          (it.kind === 'perk' && i.limit_up) ||
+          (it.kind === 'cashback' && i.cashback) ||
+          (it.kind === 'engraving' && i.engraving) ||
+          (it.kind === 'avatar' && i.avatar);
+        const extra =
+          it.id === 'insurance' && i.insurance ? 'в запасе: ' + i.insurance :
+          it.id === 'holidays' && i.holidays ? 'в запасе: ' + i.holidays :
+          it.id === 'case' && i.cases ? 'не открыто: ' + i.cases :
+          it.id === 'bonus_boost' && boostLeft ? 'активен ещё ' + boostLeft :
+          it.id === 'engraving' && u.engraving ? 'на карте: ' + u.engraving : '';
+        const box = el('div', 'good');
+        box.innerHTML = `<div class="good-main"><b>${esc(it.name)}</b><span class="muted">${esc(it.desc)}</span>
+          ${extra ? `<span class="muted">${esc(extra)}</span>` : ''}</div>`;
+        const btn = el('button', 'btn mini ' + (has ? '' : 'primary'), has ? 'куплено' : money(it.price));
+        btn.disabled = has;
+        btn.onclick = () => buy(it.id);
+        box.appendChild(btn);
+        if (it.kind === 'engraving' && i.engraving) {
+          const edit = el('button', 'btn mini primary', 'Изменить');
+          edit.onclick = engraveModal;
+          box.appendChild(edit);
+        }
+        v.appendChild(box);
+      });
     });
 
     function buy(id) {
       const it = C.SHOP.find(x => x.id === id);
-      confirmBox('Покупка', it.name + ' за ' + cur(it.price) + '. Списать чекурубли?', () => guard(async () => {
+      confirmBox('Покупка', it.name + ' за ' + cur(it.price) + '. Списать со счёта?', () => guard(async () => {
         await S.api.shopBuy(S.token, id);
-        await refresh(); render();
-        ok('Куплено: ' + it.name);
+        await refresh();
+        if (it.kind === 'engraving') engraveModal();
+        else render();
+        ok(it.kind === 'reissue' ? 'Карта перевыпущена' : 'Куплено: ' + it.name);
       }));
+    }
+
+    function openCase() {
+      guard(async () => {
+        const r = await S.api.caseOpen(S.token);
+        await refresh();
+        modal('Ящик чекушек', (mb, m) => {
+          const stage = el('div', 'game-stage', '');
+          const num_ = el('div', 'big-num', '...');
+          const text = el('div', 'muted', 'Открываем');
+          stage.append(num_, text);
+          mb.appendChild(stage);
+          let n = 0;
+          const roll = setInterval(() => {
+            num_.textContent = money([0, 200, 500, 1000, 2500, 5000, 10000][n++ % 7]);
+            if (n > 10) {
+              clearInterval(roll);
+              if (r.prize.skin) {
+                num_.textContent = 'Золото банка';
+                text.innerHTML = '<b class="pos">Редкое оформление карты</b>';
+              } else if (r.prize.amount) {
+                num_.textContent = money(r.prize.amount);
+                text.innerHTML = '<b class="pos">' + cur(r.prize.amount) + ' на счёт</b>';
+              } else {
+                num_.textContent = 'Пусто';
+                text.innerHTML = '<b class="neg">В этот раз не повезло</b>';
+              }
+              render();
+            }
+          }, 130);
+          const close = el('button', 'btn primary full', 'Забрать');
+          close.onclick = () => { m.close(); render(); };
+          mb.appendChild(close);
+        });
+      });
+    }
+
+    function engraveModal() {
+      modal('Гравировка на карте', (mb, m) => {
+        mb.appendChild(el('p', 'muted', 'До 16 символов латиницей, цифры, точка и дефис.'));
+        const f = el('label', 'field', `<span>Надпись</span><input maxlength="16" value="${esc(u.engraving || '')}" placeholder="CHEKUSHKA CLUB"><em class="err"></em>`);
+        mb.appendChild(f);
+        const inp = f.querySelector('input');
+        inp.addEventListener('input', () => {
+          inp.value = inp.value.toUpperCase().replace(/[^A-Z0-9 .\-]/g, '');
+        });
+        const go = el('button', 'btn primary full', 'Нанести');
+        go.onclick = () => guard(async () => {
+          await S.api.engrave(S.token, inp.value.trim());
+          m.close(); await refresh(); render();
+          ok('Гравировка обновлена');
+        });
+        const clear = el('button', 'btn full ghost', 'Убрать надпись');
+        clear.onclick = () => guard(async () => {
+          await S.api.engrave(S.token, '');
+          m.close(); await refresh(); render();
+        });
+        mb.append(go, clear);
+      });
     }
 
     function equip(kind, value) {
@@ -1372,7 +1848,7 @@
 
       const top = el('div', 'stat-row');
       top.innerHTML = `<div class="stat"><b>${st.clients}</b><span>клиентов</span></div>
-        <div class="stat"><b>${money(st.money)}</b><span>₡ в обороте</span></div>
+        <div class="stat"><b>${money(st.money)}</b><span>в обороте</span></div>
         <div class="stat"><b>${st.tx_count}</b><span>операций</span></div>`;
       box.appendChild(top);
 
@@ -1489,12 +1965,12 @@
         modal('Выдача чекурублей', (b, m) => {
           b.appendChild(el('p', 'muted', 'Банк начислит сумму на счёт клиента. Отрицательная сумма спишет чекурубли.'));
           const f1 = el('label', 'field', `<span>Клиент (телефон, карта или ФИО)</span><input value="${esc(target ? U.prettyPhone(target) : '')}"><em class="err"></em>`);
-          const f2 = el('label', 'field', '<span>Сумма, ₡</span><input inputmode="decimal" value="1000"><em class="err"></em>');
+          const f2 = el('label', 'field', '<span>Сумма, чекурубли</span><input inputmode="decimal" value="1000"><em class="err"></em>');
           const f3 = el('label', 'field', '<span>Причина</span><input maxlength="60" placeholder="промоакция"></label>');
           b.append(f1, f2, f3);
           const row = el('div', 'actions');
           [1000, 10000, -1000].forEach(x => {
-            const q = el('button', 'act', `<span>${x > 0 ? '+' : ''}${x}</span>`);
+            const q = el('button', 'act', `<span>${num(x)}</span>`);
             q.onclick = () => f2.querySelector('input').value = x;
             row.appendChild(q);
           });
@@ -1558,7 +2034,7 @@
         const row = el('div', 'tx');
         row.innerHTML = `<div class="tx-ico">${TX_ICONS[t.category] || '•'}</div>
           <div class="tx-main"><div class="tx-t">${esc(t.who)}</div><div class="tx-d">${esc(t.title)} · ${when(t.ts)}</div></div>
-          <div class="tx-a ${t.amount >= 0 ? 'pos' : 'neg'}">${signed(t.amount)}</div>`;
+          <div class="tx-a ${t.amount > 0 ? 'pos' : t.amount < 0 ? 'neg' : 'muted'}">${num(t.amount) || '0'}</div>`;
         c.appendChild(row);
       });
       box.appendChild(c);

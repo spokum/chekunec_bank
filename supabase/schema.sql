@@ -16,7 +16,8 @@ create table if not exists cb_users (
   role           text not null default 'client',
   blocked        boolean not null default false,
   blocked_reason text not null default '',
-  inventory      jsonb not null default '{"skins":["base"],"titles":[],"insurance":0,"bonus_boost_until":null,"limit_up":false,"avatar":false}'::jsonb,
+  inventory      jsonb not null default '{"skins":["base"],"titles":[],"insurance":0,"bonus_boost_until":null,"limit_up":false,"avatar":false,"engraving":false,"cases":0,"holidays":0,"cashback":false}'::jsonb,
+  engraving      text not null default '',
   equipped       jsonb not null default '{"skin":"base","title":"","avatar":""}'::jsonb,
   settings       jsonb not null default '{"theme":"dark","hide_balance":false,"sound":true,"notify":true,"public":true}'::jsonb,
   last_bonus     date,
@@ -68,17 +69,34 @@ insert into cb_shop_items(id, kind, value, price) values
   ('skin_azure','skin','azure',3000),
   ('skin_emerald','skin','emerald',3500),
   ('skin_sand','skin','sand',4000),
+  ('skin_chekushka','skin','chekushka',6000),
   ('skin_platinum','skin','platinum',9000),
   ('title_lucky','title','Везунчик',1500),
+  ('title_chekushkin','title','Чекушкин',2500),
   ('title_vip','title','VIP-клиент',4000),
   ('title_magnat','title','Магнат',12000),
+  ('title_legend','title','Легенда банка',25000),
+  ('case','case','',1000),
+  ('avatar','avatar','',700),
+  ('engraving','engraving','',5000),
+  ('reissue','reissue','',3000),
   ('insurance','consumable','',1200),
+  ('holidays','holidays','',2000),
   ('bonus_boost','boost','',1800),
   ('limit_up','perk','',15000),
-  ('avatar','avatar','',700)
+  ('cashback','cashback','',20000)
 on conflict (id) do update set kind = excluded.kind, value = excluded.value, price = excluded.price;
 
 delete from cb_shop_items where id in ('skin_neon','skin_ice','skin_blood','skin_dark','skin_gold','emoji');
+
+alter table cb_users add column if not exists engraving text not null default '';
+
+update cb_users set inventory = inventory ||
+  jsonb_build_object('engraving', coalesce((inventory->>'engraving')::boolean, false),
+                     'cases', coalesce((inventory->>'cases')::int, 0),
+                     'holidays', coalesce((inventory->>'holidays')::int, 0),
+                     'cashback', coalesce((inventory->>'cashback')::boolean, false))
+ where not (inventory ? 'cases');
 
 update cb_users
    set inventory = (inventory - 'emoji') || jsonb_build_object('avatar', coalesce(inventory->>'emoji','') <> '')
@@ -105,7 +123,7 @@ language sql stable as $$
     'id', u.id, 'first_name', u.first_name, 'last_name', u.last_name,
     'phone', u.phone, 'email', u.email, 'card_number', u.card_number,
     'card_holder', u.card_holder, 'card_exp', u.card_exp, 'card_cvv', u.card_cvv,
-    'account_number', u.account_number, 'balance', u.balance, 'role', u.role,
+    'account_number', u.account_number, 'balance', u.balance, 'role', u.role, 'engraving', u.engraving,
     'blocked', u.blocked, 'inventory', u.inventory, 'equipped', u.equipped,
     'settings', u.settings, 'created_at', u.created_at, 'last_bonus', u.last_bonus);
 $$;
@@ -301,7 +319,7 @@ end $$;
 
 create or replace function cb_game(p_token text, p_game text, p_stake numeric, p_payout numeric, p_title text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare u cb_users; st numeric; po numeric; bal numeric;
+declare u cb_users; st numeric; po numeric; bal numeric; cb numeric := 0;
 begin
   u := cb_auth(p_token);
   st := round(greatest(coalesce(p_stake,0),0), 2);
@@ -313,7 +331,11 @@ begin
   if st > 0 and bal < st then raise exception 'Недостаточно чекурублей для ставки'; end if;
   bal := cb_post(u.id, po - st, case when st > 0 then 'game_bet' else 'game_win' end, left(p_title,80),
                  jsonb_build_object('game', p_game, 'stake', st, 'payout', po));
-  return jsonb_build_object('balance', bal, 'delta', po - st);
+  if po < st and coalesce((u.inventory->>'cashback')::boolean, false) then
+    cb := round((st - po) * 0.05, 2);
+    bal := cb_post(u.id, cb, 'cashback', 'Кэшбек с проигрыша', jsonb_build_object('game', p_game));
+  end if;
+  return jsonb_build_object('balance', bal, 'delta', po - st, 'cashback', cb);
 end $$;
 
 create or replace function cb_credit_take(p_token text, p_amount numeric, p_days int) returns jsonb
@@ -325,7 +347,7 @@ begin
   select case when coalesce((inventory->>'limit_up')::boolean, false) then 150000 else 50000 end
     into lim from cb_users where id = u.id;
   amt := round(coalesce(p_amount,0), 2);
-  if amt < 100 or amt > lim then raise exception 'Сумма кредита: от 100 до % ₡', lim; end if;
+  if amt < 100 or amt > lim then raise exception 'Сумма кредита: от 100 до % чекурублей', lim; end if;
   rate := case p_days when 1 then 5 when 3 then 10 when 7 then 18 when 30 then 35 else null end;
   if rate is null then raise exception 'Неизвестная программа кредитования'; end if;
   if (select count(*) from cb_credits where user_id = u.id and status = 'active') >= 3 then
@@ -389,6 +411,8 @@ begin
   if it.kind = 'title' and invn->'titles' ? it.value then raise exception 'Титул уже куплен'; end if;
   if it.kind = 'perk' and coalesce((invn->>'limit_up')::boolean,false) then raise exception 'Лимит уже повышен'; end if;
   if it.kind = 'avatar' and coalesce((invn->>'avatar')::boolean,false) then raise exception 'Уже куплено'; end if;
+  if it.kind = 'cashback' and coalesce((invn->>'cashback')::boolean,false) then raise exception 'Кэшбек уже подключён'; end if;
+  if it.kind = 'engraving' and coalesce((invn->>'engraving')::boolean,false) then raise exception 'Гравировка уже куплена'; end if;
   if bal < it.price then raise exception 'Недостаточно чекурублей'; end if;
 
   if it.kind = 'skin' then
@@ -401,6 +425,16 @@ begin
     invn := jsonb_set(invn, '{insurance}', to_jsonb(coalesce((invn->>'insurance')::int,0) + 1));
   elsif it.kind = 'avatar' then
     invn := jsonb_set(invn, '{avatar}', 'true'::jsonb);
+  elsif it.kind = 'cashback' then
+    invn := jsonb_set(invn, '{cashback}', 'true'::jsonb);
+  elsif it.kind = 'engraving' then
+    invn := jsonb_set(invn, '{engraving}', 'true'::jsonb);
+  elsif it.kind = 'case' then
+    invn := jsonb_set(invn, '{cases}', to_jsonb(coalesce((invn->>'cases')::int,0) + 1));
+  elsif it.kind = 'holidays' then
+    invn := jsonb_set(invn, '{holidays}', to_jsonb(coalesce((invn->>'holidays')::int,0) + 1));
+  elsif it.kind = 'reissue' then
+    perform cb_new_card(u.id);
   elsif it.kind = 'boost' then
     base := greatest(coalesce((invn->>'bonus_boost_until')::timestamptz, now()), now());
     invn := jsonb_set(invn, '{bonus_boost_until}', to_jsonb((base + interval '7 days')));
@@ -613,6 +647,105 @@ begin
     join cb_users x on x.id = t.user_id), '[]'::jsonb);
 end $$;
 
+create or replace function cb_new_card(p_user uuid) returns cb_users
+language plpgsql security definer set search_path = public as $$
+declare body text; sum_ int; d int; dbl boolean; num text; u cb_users; tries int := 0;
+begin
+  loop
+    tries := tries + 1;
+    body := '4200';
+    while length(body) < 15 loop body := body || floor(random()*10)::int::text; end loop;
+    sum_ := 0; dbl := true;
+    for i in reverse 15..1 loop
+      d := substr(body, i, 1)::int;
+      if dbl then d := d * 2; if d > 9 then d := d - 9; end if; end if;
+      dbl := not dbl;
+      sum_ := sum_ + d;
+    end loop;
+    num := body || ((10 - (sum_ % 10)) % 10)::text;
+    exit when not exists(select 1 from cb_users where card_number = num) or tries > 20;
+  end loop;
+  update cb_users
+     set card_number = num,
+         card_cvv = lpad(floor(random()*900 + 100)::int::text, 3, '0'),
+         card_exp = to_char(now() + interval '5 years', 'MM/YY')
+   where id = p_user
+   returning * into u;
+  return u;
+end $$;
+
+create or replace function cb_reissue(p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u cb_users;
+begin
+  u := cb_auth(p_token);
+  u := cb_new_card(u.id);
+  return jsonb_build_object('user', cb_pub(u));
+end $$;
+
+create or replace function cb_engrave(p_token text, p_text text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u cb_users; clean text;
+begin
+  u := cb_auth(p_token);
+  if not coalesce((u.inventory->>'engraving')::boolean, false) then raise exception 'Гравировка не куплена'; end if;
+  clean := btrim(left(regexp_replace(upper(coalesce(p_text,'')), '[^A-Z0-9 .-]', '', 'g'), 16));
+  update cb_users set engraving = clean where id = u.id;
+  select * into u from cb_users where id = u.id;
+  return jsonb_build_object('user', cb_pub(u));
+end $$;
+
+create or replace function cb_case_open(p_token text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u cb_users; invn jsonb; cases int; roll numeric; amt numeric := 0; skin text := null; bal numeric; title text;
+begin
+  u := cb_auth(p_token);
+  perform 1 from cb_users where id = u.id for update;
+  select inventory into invn from cb_users where id = u.id;
+  cases := coalesce((invn->>'cases')::int, 0);
+  if cases < 1 then raise exception 'Ящиков нет — купите в магазине'; end if;
+  invn := jsonb_set(invn, '{cases}', to_jsonb(cases - 1));
+
+  roll := random() * 100;
+  if roll < 1 and not (invn->'skins' ? 'goldbank') then
+    skin := 'goldbank';
+    invn := jsonb_set(invn, '{skins}', (invn->'skins') || to_jsonb('goldbank'::text));
+  elsif roll < 21 then amt := 0;
+  elsif roll < 46 then amt := 200;
+  elsif roll < 66 then amt := 500;
+  elsif roll < 81 then amt := 1000;
+  elsif roll < 91 then amt := 2500;
+  elsif roll < 98 then amt := 5000;
+  else amt := 10000;
+  end if;
+
+  update cb_users set inventory = invn where id = u.id;
+  title := case when skin is not null then 'Ящик чекушек: оформление «Золото банка»'
+                when amt > 0 then 'Ящик чекушек: выигрыш'
+                else 'Ящик чекушек: пусто' end;
+  bal := cb_post(u.id, amt, 'case', title, jsonb_build_object('skin', skin, 'amount', amt));
+  select * into u from cb_users where id = u.id;
+  return jsonb_build_object('balance', bal, 'user', cb_pub(u),
+                            'prize', jsonb_build_object('amount', amt, 'skin', skin));
+end $$;
+
+create or replace function cb_credit_extend(p_token text, p_credit text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u cb_users; c cb_credits; invn jsonb; hol int;
+begin
+  u := cb_auth(p_token);
+  perform 1 from cb_users where id = u.id for update;
+  select inventory into invn from cb_users where id = u.id;
+  hol := coalesce((invn->>'holidays')::int, 0);
+  if hol < 1 then raise exception 'Кредитных каникул нет — купите в магазине'; end if;
+  select * into c from cb_credits where id = p_credit::uuid and user_id = u.id for update;
+  if not found or c.status <> 'active' then raise exception 'Кредит не найден или уже закрыт'; end if;
+  update cb_users set inventory = jsonb_set(invn, '{holidays}', to_jsonb(hol - 1)) where id = u.id;
+  update cb_credits set due_at = due_at + interval '3 days', days = days + 3 where id = c.id returning * into c;
+  perform cb_post(u.id, 0, 'credit', 'Кредитные каникулы: срок продлён на 3 дня', jsonb_build_object('credit', c.id));
+  return jsonb_build_object('credit', to_jsonb(c));
+end $$;
+
 revoke all on all tables in schema public from anon, authenticated;
 
 grant execute on function
@@ -623,9 +756,10 @@ grant execute on function
   cb_daily_bonus(text), cb_update_profile(text,jsonb), cb_change_pin(text,text,text),
   cb_top(text), cb_logout(text), cb_delete_account(text),
   cb_shop_buy(text,text), cb_shop_equip(text,text,text),
+  cb_case_open(text), cb_engrave(text,text), cb_reissue(text), cb_credit_extend(text,text),
   cb_admin_stats(text), cb_admin_users(text,text), cb_admin_issue(text,text,numeric,text),
   cb_admin_role(text,text,text), cb_admin_block(text,text,boolean,text), cb_admin_feed(text)
 to anon, authenticated;
 
 revoke execute on function cb_auth(text), cb_staff(text,boolean), cb_post(uuid,numeric,text,text,jsonb),
-  cb_process_overdue(uuid), cb_lookup(text) from anon, authenticated, public;
+  cb_process_overdue(uuid), cb_lookup(text), cb_new_card(uuid) from anon, authenticated, public;
