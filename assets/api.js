@@ -29,6 +29,12 @@
 
   function isEmail(v) { return /^[^\s@]+@[^\s@]+\.[a-zA-Zа-яА-Я]{2,}$/.test(String(v || '').trim()); }
 
+  function maskPhone(p) {
+    const d = String(p || '').replace(/\D/g, '');
+    if (d.length !== 11) return '';
+    return '+7 (' + d.slice(1, 4) + ') ***-**-' + d.slice(9);
+  }
+
   function luhnCheckDigit(num15) {
     let sum = 0, dbl = true;
     for (let i = num15.length - 1; i >= 0; i--) {
@@ -92,6 +98,13 @@
     { days: 7,  rate: 18, label: '7 дней' },
     { days: 30, rate: 35, label: '30 дней' }
   ];
+  const DEPOSIT_PLANS = [
+    { days: 1,  rate: 2,  label: '1 день' },
+    { days: 3,  rate: 5,  label: '3 дня' },
+    { days: 7,  rate: 9,  label: '7 дней' },
+    { days: 30, rate: 20, label: '30 дней' }
+  ];
+  const DEPOSIT_MIN = 500;
   const CREDIT_LIMIT = 50000;
   const CREDIT_LIMIT_VIP = 150000;
 
@@ -166,7 +179,11 @@
     { id: 'limit_up', kind: 'perk', price: 15000, group: 'Банковские услуги',
       name: 'Повышенный кредитный лимит', desc: 'Кредиты до 150 000 навсегда' },
     { id: 'cashback', kind: 'cashback', price: 20000, group: 'Банковские услуги',
-      name: 'Кэшбек с проигрышей', desc: 'Банк возвращает 5 процентов от проигранного в играх' }
+      name: 'Кэшбек с проигрышей', desc: 'Банк возвращает 5 процентов от проигранного в играх' },
+    { id: 'autopay', kind: 'autopay', price: 8000, group: 'Банковские услуги',
+      name: 'Автопогашение кредита', desc: 'В день возврата банк сам спишет долг без штрафа, если деньги на счёте' },
+    { id: 'deposit_plus', kind: 'deposit_plus', price: 12000, group: 'Банковские услуги',
+      name: 'Повышенная ставка по вкладам', desc: 'Плюс 3 процента к любому вкладу навсегда' }
   ];
 
   const SHOP_GROUPS = ['Ящики и удача', 'Оформление карты', 'Внешний вид', 'Титулы', 'Банковские услуги'];
@@ -249,6 +266,8 @@
     engrave(token, text) { return this.rpc('cb_engrave', { p_token: token, p_text: text }); }
     reissue(token) { return this.rpc('cb_reissue', { p_token: token }); }
     creditExtend(token, id) { return this.rpc('cb_credit_extend', { p_token: token, p_credit: id }); }
+    depositOpen(token, amount, days) { return this.rpc('cb_deposit_open', { p_token: token, p_amount: amount, p_days: days }); }
+    depositClose(token, id) { return this.rpc('cb_deposit_close', { p_token: token, p_deposit: id }); }
 
     adminStats(token) { return this.rpc('cb_admin_stats', { p_token: token }); }
     adminUsers(token, q) { return this.rpc('cb_admin_users', { p_token: token, p_query: q || '' }); }
@@ -268,8 +287,10 @@
     constructor() { this.mode = 'demo'; }
 
     db() {
-      try { return JSON.parse(localStorage.getItem(LS)) || { users: [], tx: [], credits: [] }; }
-      catch (_) { return { users: [], tx: [], credits: [] }; }
+      try {
+        const db = JSON.parse(localStorage.getItem(LS)) || {};
+        return { users: db.users || [], tx: db.tx || [], credits: db.credits || [], deposits: db.deposits || [] };
+      } catch (_) { return { users: [], tx: [], credits: [], deposits: [] }; }
     }
     save(db) { localStorage.setItem(LS, JSON.stringify(db)); }
 
@@ -301,11 +322,12 @@
       const owner = f.first === OWNER.first && f.last === OWNER.last && !db.users.some(u => u.role === 'admin');
       const user = {
         id: uid(), token: uid(), first_name: f.first, last_name: f.last,
-        phone: f.phone, email: f.email, pin_hash: await hashPin(f.phone, f.pin),
+        phone: f.phone, email: f.email || '', pin_hash: await hashPin(f.phone, f.pin),
         balance: 0, created_at: new Date().toISOString(), last_bonus: null,
         role: owner ? 'admin' : 'client', blocked: false, blocked_reason: '',
         inventory: { skins: ['base'], titles: [], insurance: 0, bonus_boost_until: null, limit_up: false,
-                     avatar: false, engraving: false, cases: 0, holidays: 0, cashback: false },
+                     avatar: false, engraving: false, cases: 0, holidays: 0, cashback: false,
+                     autopay: false, deposit_plus: false },
         equipped: { skin: 'base', title: '', avatar: '' },
         engraving: '',
         settings: { theme: 'dark', hide_balance: false, sound: true, notify: true, public: true },
@@ -333,28 +355,46 @@
       db.credits.filter(c => c.user_id === user.id && c.status === 'active').forEach(c => {
         if (new Date(c.due_at).getTime() > now) return;
         const rest = Math.round((c.total - c.paid) * 100) / 100;
-        const insured = (user.inventory.insurance || 0) > 0;
-        const penalty = insured ? 0 : Math.round(rest * PENALTY_RATE) / 100;
+        const autopaid = user.inventory.autopay && user.balance >= rest;
+        const insured = !autopaid && (user.inventory.insurance || 0) > 0;
+        const penalty = (autopaid || insured) ? 0 : Math.round(rest * PENALTY_RATE) / 100;
         if (insured) user.inventory.insurance--;
         c.status = 'overdue'; c.paid = c.total; c.closed_at = new Date().toISOString(); c.penalty = penalty;
         this.push(db, user, -rest, 'credit', 'Принудительное списание по кредиту', { credit: c.id });
         if (penalty) this.push(db, user, -penalty, 'penalty', 'Штраф за просрочку (' + PENALTY_RATE + '%)', { credit: c.id });
-        else this.push(db, user, 0, 'shop', 'Страховка отменила штраф', { credit: c.id });
+        else this.push(db, user, 0, 'shop', autopaid ? 'Автопогашение: без штрафа' : 'Страховка отменила штраф', { credit: c.id });
         hit++;
       });
       return hit;
+    }
+
+    processDeposits(db, user) {
+      const now = Date.now();
+      let n = 0;
+      db.deposits.filter(d => d.user_id === user.id && d.status === 'active').forEach(d => {
+        if (new Date(d.due_at).getTime() > now) return;
+        d.status = 'closed';
+        d.closed_at = new Date().toISOString();
+        this.push(db, user, d.total, 'deposit', 'Вклад закрыт с доходом ' + Math.round((d.total - d.amount) * 100) / 100,
+          { deposit: d.id });
+        n++;
+      });
+      return n;
     }
 
     async state(token) {
       const db = this.db();
       const u = this.byToken(db, token);
       const overdue = this.processOverdue(db, u);
+      const matured = this.processDeposits(db, u);
       this.save(db);
       return {
         user: this.pub(u),
         transactions: db.tx.filter(t => t.user_id === u.id).sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 200),
         credits: db.credits.filter(c => c.user_id === u.id).sort((a, b) => b.taken_at.localeCompare(a.taken_at)),
+        deposits: db.deposits.filter(d => d.user_id === u.id).sort((a, b) => b.opened_at.localeCompare(a.opened_at)),
         overdue_applied: overdue,
+        deposits_matured: matured,
         clients: db.users.length
       };
     }
@@ -374,7 +414,7 @@
       const t = this.lookup(db, q);
       if (!t) throw new Error('Клиент Чекунец Банка не найден');
       if (t.id === me.id) throw new Error('Это ваш собственный счёт');
-      return { name: t.first_name + ' ' + t.last_name[0] + '.', phone: prettyPhone(t.phone) };
+      return { name: t.first_name + ' ' + t.last_name[0] + '.', phone: maskPhone(t.phone) };
     }
 
     async transfer(token, q, amount, note) {
@@ -388,9 +428,9 @@
       if (to.blocked) throw new Error('Счёт получателя заблокирован');
       if (me.balance < amount) throw new Error('Недостаточно чекурублей на счёте');
       this.push(db, me, -amount, 'transfer_out', 'Перевод — ' + to.first_name + ' ' + to.last_name,
-        { to: to.phone, note: note || '' });
+        { to: maskPhone(to.phone), note: note || '' });
       this.push(db, to, amount, 'transfer_in', 'Перевод от ' + me.first_name + ' ' + me.last_name,
-        { from: me.phone, note: note || '' });
+        { from: maskPhone(me.phone), note: note || '' });
       this.save(db);
       return { ok: true, balance: me.balance, to: to.first_name + ' ' + to.last_name };
     }
@@ -464,7 +504,7 @@
 
     async updateProfile(token, patch) {
       const db = this.db(); const u = this.byToken(db, token);
-      if (patch.email) u.email = patch.email;
+      if (patch.email !== undefined) u.email = patch.email;
       if (patch.phone) {
         if (db.users.some(x => x.phone === patch.phone && x.id !== u.id)) throw new Error('Этот телефон уже занят');
         u.phone = patch.phone;
@@ -498,6 +538,8 @@
       if (item.kind === 'title' && inv.titles.includes(item.value)) throw new Error('Титул уже куплен');
       if (item.kind === 'perk' && inv.limit_up) throw new Error('Лимит уже повышен');
       if (item.kind === 'cashback' && inv.cashback) throw new Error('Кэшбек уже подключён');
+      if (item.kind === 'autopay' && inv.autopay) throw new Error('Автопогашение уже подключено');
+      if (item.kind === 'deposit_plus' && inv.deposit_plus) throw new Error('Повышенная ставка уже подключена');
       if (item.kind === 'engraving' && inv.engraving) throw new Error('Гравировка уже куплена');
       if (item.kind === 'avatar' && inv.avatar) throw new Error('Уже куплено');
       if (u.balance < item.price) throw new Error('Недостаточно чекурублей');
@@ -505,6 +547,8 @@
       if (item.kind === 'title') inv.titles.push(item.value);
       if (item.kind === 'perk') inv.limit_up = true;
       if (item.kind === 'cashback') inv.cashback = true;
+      if (item.kind === 'autopay') inv.autopay = true;
+      if (item.kind === 'deposit_plus') inv.deposit_plus = true;
       if (item.kind === 'engraving') inv.engraving = true;
       if (item.kind === 'consumable') inv.insurance = (inv.insurance || 0) + 1;
       if (item.kind === 'holidays') inv.holidays = (inv.holidays || 0) + 1;
@@ -562,6 +606,44 @@
       u.card_number = card.card_number; u.card_exp = card.card_exp; u.card_cvv = card.card_cvv;
       this.save(db);
       return { user: this.pub(u) };
+    }
+
+    async depositOpen(token, amount, days) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const plan = DEPOSIT_PLANS.find(p => p.days === days);
+      if (!plan) throw new Error('Неизвестная программа вклада');
+      amount = Math.round(Number(amount) * 100) / 100;
+      if (!(amount >= DEPOSIT_MIN)) throw new Error('Минимальный вклад: ' + DEPOSIT_MIN + ' чекурублей');
+      if (u.balance < amount) throw new Error('Недостаточно чекурублей');
+      if (db.deposits.filter(d => d.user_id === u.id && d.status === 'active').length >= 5) {
+        throw new Error('Больше пяти вкладов сразу открыть нельзя');
+      }
+      const rate = plan.rate + (u.inventory.deposit_plus ? 3 : 0);
+      const d = {
+        id: uid(), user_id: u.id, amount, rate, days: plan.days,
+        total: Math.round(amount * (1 + rate / 100) * 100) / 100,
+        opened_at: new Date().toISOString(),
+        due_at: new Date(Date.now() + plan.days * 864e5).toISOString(),
+        status: 'active'
+      };
+      db.deposits.push(d);
+      this.push(db, u, -amount, 'deposit', 'Открыт вклад на ' + plan.label, { deposit: d.id });
+      this.save(db);
+      return { deposit: d, balance: u.balance };
+    }
+
+    async depositClose(token, id) {
+      const db = this.db(); const u = this.byToken(db, token);
+      const d = db.deposits.find(x => x.id === id && x.user_id === u.id);
+      if (!d || d.status !== 'active') throw new Error('Вклад не найден или уже закрыт');
+      const matured = new Date(d.due_at).getTime() <= Date.now();
+      const back = matured ? d.total : d.amount;
+      d.status = matured ? 'closed' : 'early';
+      d.closed_at = new Date().toISOString();
+      this.push(db, u, back, 'deposit', matured ? 'Вклад закрыт с доходом' : 'Вклад закрыт досрочно, без процентов',
+        { deposit: d.id });
+      this.save(db);
+      return { deposit: d, balance: u.balance, early: !matured };
     }
 
     async creditExtend(token, id) {
@@ -704,6 +786,7 @@
       db.users = db.users.filter(x => x.id !== u.id);
       db.tx = db.tx.filter(t => t.user_id !== u.id);
       db.credits = db.credits.filter(c => c.user_id !== u.id);
+      db.deposits = db.deposits.filter(d => d.user_id !== u.id);
       this.save(db);
       return { ok: true };
     }
@@ -725,8 +808,8 @@
 
   global.CB = {
     createApi, readOverride, writeOverride, RemoteApi, LocalApi,
-    utils: { translit, normalizePhone, prettyPhone, isEmail, luhnCheckDigit, uid },
+    utils: { translit, normalizePhone, prettyPhone, maskPhone, isEmail, luhnCheckDigit, uid },
     consts: { WELCOME_BONUS, CREDIT_PLANS, PENALTY_RATE, CREDIT_LIMIT, CREDIT_LIMIT_VIP,
-              SHOP, SHOP_GROUPS, SKINS, AVATAR_COLORS, ROLES, OWNER }
+              SHOP, SHOP_GROUPS, SKINS, AVATAR_COLORS, ROLES, OWNER, DEPOSIT_PLANS, DEPOSIT_MIN }
   };
 })(window);

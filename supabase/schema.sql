@@ -16,7 +16,7 @@ create table if not exists cb_users (
   role           text not null default 'client',
   blocked        boolean not null default false,
   blocked_reason text not null default '',
-  inventory      jsonb not null default '{"skins":["base"],"titles":[],"insurance":0,"bonus_boost_until":null,"limit_up":false,"avatar":false,"engraving":false,"cases":0,"holidays":0,"cashback":false}'::jsonb,
+  inventory      jsonb not null default '{"skins":["base"],"titles":[],"insurance":0,"bonus_boost_until":null,"limit_up":false,"avatar":false,"engraving":false,"cases":0,"holidays":0,"cashback":false,"autopay":false,"deposit_plus":false}'::jsonb,
   engraving      text not null default '',
   equipped       jsonb not null default '{"skin":"base","title":"","avatar":""}'::jsonb,
   settings       jsonb not null default '{"theme":"dark","hide_balance":false,"sound":true,"notify":true,"public":true}'::jsonb,
@@ -57,6 +57,19 @@ create table if not exists cb_credits (
   closed_at timestamptz
 );
 
+create table if not exists cb_deposits (
+  id        uuid primary key default gen_random_uuid(),
+  user_id   uuid not null references cb_users(id) on delete cascade,
+  amount    numeric(14,2) not null,
+  rate      int not null,
+  days      int not null,
+  total     numeric(14,2) not null,
+  status    text not null default 'active',
+  opened_at timestamptz not null default now(),
+  due_at    timestamptz not null,
+  closed_at timestamptz
+);
+
 create table if not exists cb_shop_items (
   id    text primary key,
   kind  text not null,
@@ -84,7 +97,9 @@ insert into cb_shop_items(id, kind, value, price) values
   ('holidays','holidays','',2000),
   ('bonus_boost','boost','',1800),
   ('limit_up','perk','',15000),
-  ('cashback','cashback','',20000)
+  ('cashback','cashback','',20000),
+  ('autopay','autopay','',8000),
+  ('deposit_plus','deposit_plus','',12000)
 on conflict (id) do update set kind = excluded.kind, value = excluded.value, price = excluded.price;
 
 delete from cb_shop_items where id in ('skin_neon','skin_ice','skin_blood','skin_dark','skin_gold','emoji');
@@ -98,6 +113,13 @@ update cb_users set inventory = inventory ||
                      'cashback', coalesce((inventory->>'cashback')::boolean, false))
  where not (inventory ? 'cases');
 
+update cb_users set inventory = inventory ||
+  jsonb_build_object('autopay', coalesce((inventory->>'autopay')::boolean, false),
+                     'deposit_plus', coalesce((inventory->>'deposit_plus')::boolean, false))
+ where not (inventory ? 'autopay');
+
+alter table cb_users alter column email set default '';
+
 update cb_users
    set inventory = (inventory - 'emoji') || jsonb_build_object('avatar', coalesce(inventory->>'emoji','') <> '')
  where inventory ? 'emoji';
@@ -109,12 +131,14 @@ update cb_users
 create index if not exists cb_tx_user_ts on cb_tx(user_id, ts desc);
 create index if not exists cb_tx_ts on cb_tx(ts desc);
 create index if not exists cb_credits_user on cb_credits(user_id);
+create index if not exists cb_deposits_user on cb_deposits(user_id);
 create index if not exists cb_sessions_user on cb_sessions(user_id);
 
 alter table cb_users      enable row level security;
 alter table cb_sessions   enable row level security;
 alter table cb_tx         enable row level security;
 alter table cb_credits    enable row level security;
+alter table cb_deposits   enable row level security;
 alter table cb_shop_items enable row level security;
 
 create or replace function cb_pub(u cb_users) returns jsonb
@@ -164,13 +188,17 @@ end $$;
 
 create or replace function cb_process_overdue(p_user uuid) returns int
 language plpgsql security definer set search_path = public as $$
-declare c cb_credits; rest numeric; fine numeric; ins int; n int := 0;
+declare c cb_credits; rest numeric; fine numeric; ins int; autop boolean; n int := 0;
 begin
   for c in select * from cb_credits
             where user_id = p_user and status = 'active' and due_at <= now() for update loop
     rest := round(c.total - c.paid, 2);
-    select coalesce((inventory->>'insurance')::int, 0) into ins from cb_users where id = p_user;
-    if ins > 0 then
+    select coalesce((inventory->>'insurance')::int, 0),
+           coalesce((inventory->>'autopay')::boolean, false) and balance >= rest
+      into ins, autop from cb_users where id = p_user;
+    if autop then
+      fine := 0;
+    elsif ins > 0 then
       fine := 0;
       update cb_users set inventory = jsonb_set(inventory, '{insurance}', to_jsonb(ins - 1)) where id = p_user;
     else
@@ -181,7 +209,9 @@ begin
     if fine > 0 then
       perform cb_post(p_user, -fine, 'penalty', 'Штраф за просрочку (25%)', jsonb_build_object('credit', c.id));
     else
-      perform cb_post(p_user, 0, 'shop', 'Страховка отменила штраф', jsonb_build_object('credit', c.id));
+      perform cb_post(p_user, 0, 'shop',
+        case when autop then 'Автопогашение: без штрафа' else 'Страховка отменила штраф' end,
+        jsonb_build_object('credit', c.id));
     end if;
     n := n + 1;
   end loop;
@@ -201,7 +231,9 @@ language plpgsql security definer set search_path = public as $$
 declare u cb_users; tok uuid; r text := 'client';
 begin
   if p_phone !~ '^\+7[3489][0-9]{9}$' then raise exception 'Некорректный номер телефона'; end if;
-  if p_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$' then raise exception 'Некорректная почта'; end if;
+  if coalesce(p_email,'') <> '' and p_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$' then
+    raise exception 'Некорректная почта';
+  end if;
   if length(coalesce(p_pin,'')) < 16 then raise exception 'Некорректный PIN-код'; end if;
   if exists(select 1 from cb_users where phone = p_phone) then
     raise exception 'Клиент с таким телефоном уже зарегистрирован';
@@ -213,7 +245,7 @@ begin
   end if;
 
   insert into cb_users(first_name,last_name,phone,email,pin_hash,card_number,card_holder,card_exp,card_cvv,account_number,role)
-    values (left(p_first,30), left(p_last,30), p_phone, left(p_email,120), p_pin,
+    values (left(p_first,30), left(p_last,30), p_phone, left(coalesce(p_email,''),120), p_pin,
             p_card, p_holder, p_exp, p_cvv, p_account, r)
     returning * into u;
 
@@ -239,14 +271,21 @@ end $$;
 
 create or replace function cb_state(p_token text) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare u cb_users; n int;
+declare u cb_users; n int; d int;
 begin
   u := cb_auth(p_token);
   n := cb_process_overdue(u.id);
+  d := cb_process_deposits(u.id);
   select * into u from cb_users where id = u.id;
   return jsonb_build_object(
     'user', cb_pub(u),
     'overdue_applied', n,
+    'deposits_matured', d,
+    'deposits', coalesce((
+      select jsonb_agg(jsonb_build_object('id',x.id,'amount',x.amount,'rate',x.rate,'days',x.days,'total',x.total,
+                                          'status',x.status,'opened_at',x.opened_at,'due_at',x.due_at)
+                       order by x.opened_at desc)
+      from cb_deposits x where x.user_id = u.id), '[]'::jsonb),
     'clients', (select count(*) from cb_users),
     'transactions', coalesce((
       select jsonb_agg(jsonb_build_object('id',t.id,'ts',t.ts,'amount',t.amount,'category',t.category,
@@ -286,7 +325,7 @@ begin
   if t.id = me.id then raise exception 'Это ваш собственный счёт'; end if;
   if t.blocked then raise exception 'Счёт получателя заблокирован'; end if;
   return jsonb_build_object('name', t.first_name || ' ' || left(t.last_name,1) || '.',
-                            'phone', overlay(t.phone placing '***' from 6 for 3));
+                            'phone', cb_mask(t.phone));
 end $$;
 
 create or replace function cb_transfer(p_token text, p_query text, p_amount numeric, p_note text) returns jsonb
@@ -310,9 +349,9 @@ begin
   if bal < amt then raise exception 'Недостаточно чекурублей на счёте'; end if;
 
   bal := cb_post(me.id, -amt, 'transfer_out', 'Перевод — ' || t.first_name || ' ' || t.last_name,
-                 jsonb_build_object('to', t.phone, 'note', left(coalesce(p_note,''),60)));
+                 jsonb_build_object('to', cb_mask(t.phone), 'note', left(coalesce(p_note,''),60)));
   perform cb_post(t.id, amt, 'transfer_in', 'Перевод от ' || me.first_name || ' ' || me.last_name,
-                 jsonb_build_object('from', me.phone, 'note', left(coalesce(p_note,''),60)));
+                 jsonb_build_object('from', cb_mask(me.phone), 'note', left(coalesce(p_note,''),60)));
 
   return jsonb_build_object('ok', true, 'balance', bal, 'to', t.first_name || ' ' || t.last_name);
 end $$;
@@ -412,6 +451,8 @@ begin
   if it.kind = 'perk' and coalesce((invn->>'limit_up')::boolean,false) then raise exception 'Лимит уже повышен'; end if;
   if it.kind = 'avatar' and coalesce((invn->>'avatar')::boolean,false) then raise exception 'Уже куплено'; end if;
   if it.kind = 'cashback' and coalesce((invn->>'cashback')::boolean,false) then raise exception 'Кэшбек уже подключён'; end if;
+  if it.kind = 'autopay' and coalesce((invn->>'autopay')::boolean,false) then raise exception 'Автопогашение уже подключено'; end if;
+  if it.kind = 'deposit_plus' and coalesce((invn->>'deposit_plus')::boolean,false) then raise exception 'Повышенная ставка уже подключена'; end if;
   if it.kind = 'engraving' and coalesce((invn->>'engraving')::boolean,false) then raise exception 'Гравировка уже куплена'; end if;
   if bal < it.price then raise exception 'Недостаточно чекурублей'; end if;
 
@@ -427,6 +468,10 @@ begin
     invn := jsonb_set(invn, '{avatar}', 'true'::jsonb);
   elsif it.kind = 'cashback' then
     invn := jsonb_set(invn, '{cashback}', 'true'::jsonb);
+  elsif it.kind = 'autopay' then
+    invn := jsonb_set(invn, '{autopay}', 'true'::jsonb);
+  elsif it.kind = 'deposit_plus' then
+    invn := jsonb_set(invn, '{deposit_plus}', 'true'::jsonb);
   elsif it.kind = 'engraving' then
     invn := jsonb_set(invn, '{engraving}', 'true'::jsonb);
   elsif it.kind = 'case' then
@@ -475,7 +520,7 @@ begin
   em := p_patch->>'email';
   ph := p_patch->>'phone';
   if em is not null then
-    if em !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$' then raise exception 'Некорректная почта'; end if;
+    if em <> '' and em !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]{2,}$' then raise exception 'Некорректная почта'; end if;
     update cb_users set email = left(em,120) where id = u.id;
   end if;
   if ph is not null then
@@ -601,7 +646,7 @@ begin
     'emission',
     case when amt > 0 then 'Начисление от банка' else 'Списание банком' end ||
     case when coalesce(p_reason,'') <> '' then ': ' || left(p_reason,60) else '' end,
-    jsonb_build_object('by', me.phone));
+    jsonb_build_object('by', cb_mask(me.phone)));
   return jsonb_build_object('balance', bal, 'name', t.first_name || ' ' || t.last_name);
 end $$;
 
@@ -645,6 +690,68 @@ begin
                      order by t.ts desc)
     from (select * from cb_tx order by ts desc limit 40) t
     join cb_users x on x.id = t.user_id), '[]'::jsonb);
+end $$;
+
+create or replace function cb_mask(p_phone text) returns text
+language sql immutable as $$
+  select case when length(regexp_replace(coalesce(p_phone,''), '\D', '', 'g')) = 11
+    then '+7 (' || substr(regexp_replace(p_phone, '\D', '', 'g'), 2, 3) || ') ***-**-' ||
+         right(regexp_replace(p_phone, '\D', '', 'g'), 2)
+    else '' end;
+$$;
+
+create or replace function cb_process_deposits(p_user uuid) returns int
+language plpgsql security definer set search_path = public as $$
+declare d cb_deposits; n int := 0;
+begin
+  for d in select * from cb_deposits
+            where user_id = p_user and status = 'active' and due_at <= now() for update loop
+    update cb_deposits set status = 'closed', closed_at = now() where id = d.id;
+    perform cb_post(p_user, d.total, 'deposit',
+      'Вклад закрыт с доходом ' || round(d.total - d.amount, 2), jsonb_build_object('deposit', d.id));
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+
+create or replace function cb_deposit_open(p_token text, p_amount numeric, p_days int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u cb_users; amt numeric; rate int; bal numeric; d cb_deposits;
+begin
+  u := cb_auth(p_token);
+  rate := case p_days when 1 then 2 when 3 then 5 when 7 then 9 when 30 then 20 else null end;
+  if rate is null then raise exception 'Неизвестная программа вклада'; end if;
+  if coalesce((u.inventory->>'deposit_plus')::boolean, false) then rate := rate + 3; end if;
+  amt := round(coalesce(p_amount,0), 2);
+  if amt < 500 then raise exception 'Минимальный вклад: 500 чекурублей'; end if;
+  if (select count(*) from cb_deposits where user_id = u.id and status = 'active') >= 5 then
+    raise exception 'Больше пяти вкладов сразу открыть нельзя';
+  end if;
+  perform 1 from cb_users where id = u.id for update;
+  select balance into bal from cb_users where id = u.id;
+  if bal < amt then raise exception 'Недостаточно чекурублей'; end if;
+  insert into cb_deposits(user_id, amount, rate, days, total, due_at)
+    values (u.id, amt, rate, p_days, round(amt * (1 + rate::numeric/100), 2), now() + (p_days || ' days')::interval)
+    returning * into d;
+  bal := cb_post(u.id, -amt, 'deposit', 'Открыт вклад на ' || p_days || ' дн.', jsonb_build_object('deposit', d.id));
+  return jsonb_build_object('balance', bal, 'deposit', to_jsonb(d));
+end $$;
+
+create or replace function cb_deposit_close(p_token text, p_deposit text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare u cb_users; d cb_deposits; matured boolean; back numeric; bal numeric;
+begin
+  u := cb_auth(p_token);
+  select * into d from cb_deposits where id = p_deposit::uuid and user_id = u.id for update;
+  if not found or d.status <> 'active' then raise exception 'Вклад не найден или уже закрыт'; end if;
+  matured := d.due_at <= now();
+  back := case when matured then d.total else d.amount end;
+  update cb_deposits set status = case when matured then 'closed' else 'early' end, closed_at = now()
+   where id = d.id returning * into d;
+  bal := cb_post(u.id, back, 'deposit',
+    case when matured then 'Вклад закрыт с доходом' else 'Вклад закрыт досрочно, без процентов' end,
+    jsonb_build_object('deposit', d.id));
+  return jsonb_build_object('balance', bal, 'deposit', to_jsonb(d), 'early', not matured);
 end $$;
 
 create or replace function cb_new_card(p_user uuid) returns cb_users
@@ -757,9 +864,11 @@ grant execute on function
   cb_top(text), cb_logout(text), cb_delete_account(text),
   cb_shop_buy(text,text), cb_shop_equip(text,text,text),
   cb_case_open(text), cb_engrave(text,text), cb_reissue(text), cb_credit_extend(text,text),
+  cb_deposit_open(text,numeric,int), cb_deposit_close(text,text),
   cb_admin_stats(text), cb_admin_users(text,text), cb_admin_issue(text,text,numeric,text),
   cb_admin_role(text,text,text), cb_admin_block(text,text,boolean,text), cb_admin_feed(text)
 to anon, authenticated;
 
 revoke execute on function cb_auth(text), cb_staff(text,boolean), cb_post(uuid,numeric,text,text,jsonb),
-  cb_process_overdue(uuid), cb_lookup(text), cb_new_card(uuid) from anon, authenticated, public;
+  cb_process_overdue(uuid), cb_process_deposits(uuid), cb_lookup(text), cb_new_card(uuid)
+  from anon, authenticated, public;

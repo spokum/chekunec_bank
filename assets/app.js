@@ -11,7 +11,7 @@
     return n;
   };
 
-  const S = { api: null, token: null, user: null, tx: [], credits: [], tab: 'home', clients: 0, busy: false };
+  const S = { api: null, token: null, user: null, tx: [], credits: [], deposits: [], tab: 'home', clients: 0, busy: false };
 
   const money = v => {
     const n = Math.round(v * 100) / 100;
@@ -220,8 +220,10 @@
     S.user = st.user;
     S.tx = st.transactions || [];
     S.credits = st.credits || [];
+    S.deposits = st.deposits || [];
     S.clients = st.clients || 0;
-    if (st.overdue_applied) bad('Кредит просрочен: долг и штраф списаны со счёта');
+    if (st.overdue_applied) bad('Кредит просрочен: долг списан со счёта');
+    if (st.deposits_matured) ok('Вклад закрыт: деньги с доходом зачислены');
     if (S.user.settings && S.user.settings.theme) applyTheme(S.user.settings.theme);
   }
 
@@ -242,7 +244,7 @@
       good = setErr($('#rg-first'), nameRe.test(first) ? '' : 'Введите имя (от 2 букв)') && good;
       good = setErr($('#rg-last'), nameRe.test(last) ? '' : 'Введите фамилию (от 2 букв)') && good;
       good = setErr($('#rg-phone'), phone ? '' : 'Номер должен быть российским: +7 и 10 цифр') && good;
-      good = setErr($('#rg-email'), U.isEmail(email) ? '' : 'Проверьте адрес почты') && good;
+      good = setErr($('#rg-email'), (!email || U.isEmail(email)) ? '' : 'Проверьте адрес или оставьте поле пустым') && good;
       good = setErr($('#rg-pin'), /^\d{4}$/.test(pin) ? '' : 'PIN — ровно 4 цифры') && good;
       good = setErr($('#rg-pin2'), pin2 === pin && pin ? '' : 'PIN-коды не совпадают') && good;
       if (!$('#rg-agree').checked) { bad('Нужно согласиться с условиями'); good = false; }
@@ -418,7 +420,7 @@
   }
 
   const MORE_TABS = [
-    { id: 'credits', name: 'Кредиты', desc: 'Взять и погасить' },
+    { id: 'credits', name: 'Кредиты и вклады', desc: 'Занять под процент или вложить' },
     { id: 'settings', name: 'Настройки', desc: 'Тема, безопасность, выход' },
     { id: 'profile', name: 'Профиль', desc: 'Данные, карта, реквизиты' },
     { id: 'admin', name: 'Панель банка', desc: 'Аналитика, люди, выдача', staff: true }
@@ -458,7 +460,7 @@
 
   const TX_ICONS = {
     transfer_in: '+', transfer_out: '−', bonus: '★', game_bet: '×', game_win: '×',
-    credit: 'К', credit_pay: 'П', penalty: '!', shop: 'М', emission: 'Б', case: 'Я', cashback: 'В'
+    credit: 'К', credit_pay: 'П', penalty: '!', shop: 'М', emission: 'Б', case: 'Я', cashback: 'В', deposit: 'Д'
   };
 
   function txRow(t) {
@@ -649,10 +651,33 @@
     { id: 'roulette', name: 'Рулетка', desc: 'Красное и чёрное — ×1.95, зеро — ×14.', risky: true, run: gameRoulette },
     { id: 'race', name: 'Гонка чекушек', desc: 'Четыре бегуна, ставка на одного — ×3.6.', risky: true, run: gameRace },
     { id: 'rps', name: 'Камень, ножницы, бумага', desc: 'Против банка: победа ×1.85, ничья — возврат.', risky: true, run: gameRps },
-    { id: 'blackjack', name: 'Двадцать одно', desc: 'Набрать больше банка, но не перебрать. Победа ×2.', risky: true, run: gameBlackjack }
+    { id: 'blackjack', name: 'Двадцать одно', desc: 'Набрать больше банка, но не перебрать. Победа ×2.', risky: true, run: gameBlackjack },
+    { id: 'catch', name: 'Ловля купюр', desc: 'Ловите падающие купюры сумкой. Мимо ящиков — они всё портят.', risky: false, run: gameCatch },
+    { id: 'plinko', name: 'Плинко', desc: 'Шарик скачет по штырькам и падает в ячейку до ×12.', risky: true, run: gamePlinko },
+    { id: 'darts', name: 'Дартс', desc: 'Остановите прицел в центре мишени — до ×8.', risky: true, run: gameDarts }
   ];
 
-  const COOLDOWN = { clicker: 120e3, quiz: 300e3, memory: 180e3, cashdesk: 240e3, courier: 180e3, sorting: 240e3 };
+  const COOLDOWN = { clicker: 120e3, quiz: 300e3, memory: 180e3, cashdesk: 240e3, courier: 180e3, sorting: 240e3, catch: 240e3 };
+
+  function canvasIn(parent, ratio) {
+    const wrap = el('div', 'canvas-wrap');
+    const cv = document.createElement('canvas');
+    wrap.appendChild(cv);
+    parent.appendChild(wrap);
+    const w = Math.max(240, wrap.clientWidth || 300);
+    const h = Math.round(w * (ratio || 0.75));
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = w * dpr; cv.height = h * dpr;
+    cv.style.width = '100%'; cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const css = getComputedStyle(document.documentElement);
+    const tone = n => css.getPropertyValue(n).trim() || '#888';
+    return { cv, ctx, w, h, colors: {
+      acc: tone('--acc'), acc2: tone('--acc2'), text: tone('--text'), muted: tone('--muted'),
+      line: tone('--line'), panel: tone('--panel2'), good: tone('--good'), bad: tone('--bad'), warn: tone('--warn')
+    } };
+  }
 
   function cooldownLeft(id) {
     if (!COOLDOWN[id]) return 0;
@@ -895,31 +920,81 @@
   function gameWheel() {
     modal('Колесо фортуны', (b, m) => {
       const getStake = stakeField(b);
-      const stage = el('div', 'game-stage', '');
-      const wheel = el('div', 'wheel');
-      const total = SECTORS.reduce((s, x) => s + x.w, 0);
+      const label = el('div', 'muted', 'Сектора: ' + SECTORS.map(x => '×' + x.m).join(' · '));
+      label.style.textAlign = 'center';
+      b.appendChild(label);
+      const { ctx, w, h, colors } = canvasIn(b, 1);
+      const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 14;
+      const total = SECTORS.reduce((sum, x) => sum + x.w, 0);
+
+      const bounds = [];
       let acc = 0;
-      wheel.style.background = 'conic-gradient(' + SECTORS.map(s => {
-        const from = acc / total * 360; acc += s.w;
-        return `${s.color} ${from}deg ${acc / total * 360}deg`;
-      }).join(',') + ')';
-      const label = el('div', 'muted', 'Шансы: ×0 · ×0.5 · ×1.5 · ×2 · ×3 · ×5 · ×10');
-      stage.append(el('div', 'big-num', '|'), wheel, label);
-      b.appendChild(stage);
+      SECTORS.forEach(sec => {
+        const from = acc / total * Math.PI * 2;
+        acc += sec.w;
+        bounds.push({ sec, from, to: acc / total * Math.PI * 2 });
+      });
+
+      const draw = rot => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = colors.panel;
+        ctx.fillRect(0, 0, w, h);
+        bounds.forEach(({ sec, from, to }) => {
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.arc(cx, cy, R, from + rot, to + rot);
+          ctx.closePath();
+          ctx.fillStyle = sec.color;
+          ctx.fill();
+          const mid = (from + to) / 2 + rot;
+          ctx.save();
+          ctx.translate(cx + Math.cos(mid) * R * 0.72, cy + Math.sin(mid) * R * 0.72);
+          ctx.rotate(mid + Math.PI / 2);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 12px system-ui';
+          ctx.textAlign = 'center';
+          ctx.fillText('×' + sec.m, 0, 0);
+          ctx.restore();
+        });
+        ctx.beginPath();
+        ctx.arc(cx, cy, R * 0.18, 0, 7);
+        ctx.fillStyle = colors.panel;
+        ctx.fill();
+        ctx.strokeStyle = colors.line;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = colors.text;
+        ctx.beginPath();
+        ctx.moveTo(cx - 9, cy - R - 12);
+        ctx.lineTo(cx + 9, cy - R - 12);
+        ctx.lineTo(cx, cy - R + 6);
+        ctx.closePath();
+        ctx.fill();
+      };
+      draw(0);
+
       const go = el('button', 'btn primary full', 'Крутить');
       go.onclick = () => {
         let stake;
         try { stake = getStake(); } catch (e) { return bad(e.message); }
         go.disabled = true;
-        const s = pickSector();
-        wheel.style.transform = 'rotate(' + (1440 + Math.random() * 360) + 'deg)';
-        setTimeout(() => {
-          const payout = Math.round(stake * s.m * 100) / 100;
-          label.innerHTML = `<b class="${payout > stake ? 'pos' : 'neg'}">Выпало ×${s.m} → ${cur(payout)}</b>`;
-          settle('wheel', stake, payout, 'Колесо фортуны ×' + s.m).then(() => {
-            setTimeout(() => { m.close(); payout > stake ? ok('Выигрыш ' + cur(payout)) : bad('×' + s.m + ' — неудача'); }, 900);
+        const sec = pickSector();
+        const hit = bounds.find(x => x.sec === sec);
+        const mid = (hit.from + hit.to) / 2;
+        const target = Math.PI * 2 * 6 + (-Math.PI / 2 - mid);
+        const t0 = performance.now(), dur = 3600;
+        const spin = now => {
+          const p = Math.min(1, (now - t0) / dur);
+          const ease = 1 - Math.pow(1 - p, 4);
+          draw(target * ease);
+          if (p < 1) return requestAnimationFrame(spin);
+          const payout = Math.round(stake * sec.m * 100) / 100;
+          label.innerHTML = '<b class="' + (payout > stake ? 'pos' : 'neg') + '">Выпало ×' + sec.m + ' — ' + cur(payout) + '</b>';
+          settle('wheel', stake, payout, 'Колесо фортуны ×' + sec.m).then(() => {
+            setTimeout(() => { m.close(); payout > stake ? ok('Выигрыш ' + cur(payout)) : bad('×' + sec.m + ' — неудача'); }, 900);
           });
-        }, 3700);
+        };
+        requestAnimationFrame(spin);
       };
       b.appendChild(go);
     }, { sticky: true });
@@ -928,19 +1003,62 @@
   function gameCrash() {
     modal('Краш', (b, m) => {
       const getStake = stakeField(b);
-      const stage = el('div', 'game-stage', '<div class="big-num mult">1.00×</div><div class="muted">Заберите до обвала</div>');
-      b.appendChild(stage);
+      const sub = el('div', 'muted', 'Множитель растёт — заберите до обвала');
+      sub.style.textAlign = 'center';
+      b.appendChild(sub);
+      const { ctx, w, h, colors } = canvasIn(b, 0.72);
       const go = el('button', 'btn primary full', 'Запустить');
       const take = el('button', 'btn full', 'Забрать');
       take.disabled = true;
       b.append(go, take);
-      let stake = 0, mult = 1, iv = null, done = false;
-      const num = stage.querySelector('.mult'), sub = stage.querySelector('.muted');
+
+      let stake = 0, mult = 1, iv = null, done = false, crashed = false;
+      const points = [];
+
+      const draw = () => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = colors.panel;
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = colors.line;
+        ctx.lineWidth = 1;
+        for (let i = 1; i < 4; i++) {
+          const y = h - (h - 30) * i / 4;
+          ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(w - 10, y); ctx.stroke();
+        }
+        if (points.length > 1) {
+          ctx.strokeStyle = crashed ? colors.bad : colors.acc2;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+          ctx.stroke();
+          const last = points[points.length - 1];
+          ctx.fillStyle = crashed ? colors.bad : colors.acc2;
+          ctx.beginPath(); ctx.arc(last.x, last.y, 5, 0, 7); ctx.fill();
+        }
+        ctx.fillStyle = crashed ? colors.bad : colors.text;
+        ctx.font = 'bold 30px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(mult.toFixed(2) + '×', w / 2, 42);
+        if (stake) {
+          ctx.fillStyle = colors.muted;
+          ctx.font = '12px system-ui';
+          ctx.fillText('к выдаче ' + money(Math.round(stake * mult * 100) / 100), w / 2, 62);
+        }
+      };
+      draw();
+
+      const push = () => {
+        const x = 10 + Math.min(1, (mult - 1) / 9) * (w - 20);
+        const y = h - 12 - Math.min(1, Math.log(mult) / Math.log(12)) * (h - 70);
+        points.push({ x, y });
+      };
 
       const finish = (payout, text, good) => {
         if (done) return; done = true;
-        clearInterval(iv); take.disabled = true;
-        sub.innerHTML = `<b class="${good ? 'pos' : 'neg'}">${text}</b>`;
+        clearInterval(iv);
+        take.disabled = true;
+        draw();
+        sub.innerHTML = '<b class="' + (good ? 'pos' : 'neg') + '">' + text + '</b>';
         settle('crash', stake, payout, 'Краш ×' + mult.toFixed(2)).then(() => {
           setTimeout(() => { m.close(); good ? ok('Забрано ' + cur(payout)) : bad('Обвал на ×' + mult.toFixed(2)); }, 900);
         });
@@ -950,14 +1068,17 @@
         try { stake = getStake(); } catch (e) { return bad(e.message); }
         go.disabled = true; take.disabled = false;
         const crashAt = Math.max(1, 0.96 / (1 - Math.random()));
+        push();
         iv = setInterval(() => {
           mult = Math.round((mult + Math.max(0.01, mult * 0.035)) * 100) / 100;
-          num.textContent = mult.toFixed(2) + '×';
           if (mult >= crashAt) {
-            num.textContent = crashAt.toFixed(2) + '×';
-            mult = crashAt;
-            finish(0, 'Обвал на ×' + crashAt.toFixed(2), false);
+            mult = Math.round(crashAt * 100) / 100;
+            crashed = true;
+            push();
+            return finish(0, 'Обвал на ×' + mult.toFixed(2), false);
           }
+          push();
+          draw();
         }, 110);
       };
       take.onclick = () => finish(Math.round(stake * mult * 100) / 100, 'Забрано на ×' + mult.toFixed(2), true);
@@ -987,6 +1108,58 @@
       <div class="kv"><span>Страховки в запасе</span><b>${inv().insurance || 0}</b></div>
       <div class="kv"><span>Кредитные каникулы</span><b>${inv().holidays || 0}</b></div>
       <div class="empty" style="padding:8px 0 0;text-align:left">Если не погасить кредит до срока, банк спишет весь остаток и штраф со счёта — баланс может уйти в минус.</div>`));
+
+    v.appendChild(el('div', 'sec-title', 'Вклады'));
+    const activeD = S.deposits.filter(d => d.status === 'active');
+    const inDeposits = activeD.reduce((sum, d) => sum + d.amount, 0);
+    const willGet = activeD.reduce((sum, d) => sum + d.total, 0);
+
+    const dhead = el('div', 'card');
+    dhead.innerHTML = `
+      <div class="kv"><span>Во вкладах сейчас</span><b>${cur(inDeposits)}</b></div>
+      <div class="kv"><span>Вернётся с процентами</span><b class="pos">${cur(willGet)}</b></div>
+      <div class="kv"><span>Ставки</span><b>${C.DEPOSIT_PLANS.map(p => p.rate + '% / ' + p.label).join(' · ')}</b></div>
+      <div class="kv"><span>Минимальная сумма</span><b>${money(C.DEPOSIT_MIN)}</b></div>
+      ${inv().deposit_plus ? '<div class="kv"><span>Ваша надбавка</span><b class="pos">+3% к любому вкладу</b></div>' : ''}
+      <div class="empty" style="padding:8px 0 0;text-align:left">Деньги вернутся с процентами в день выплаты.
+        Забрать раньше можно, но проценты тогда сгорают.</div>`;
+    const openDep = el('button', 'btn primary full', 'Открыть вклад');
+    openDep.onclick = depositModal;
+    dhead.appendChild(openDep);
+    v.appendChild(dhead);
+
+    S.deposits.forEach(d => {
+      const matured = d.status === 'active' && new Date(d.due_at).getTime() <= Date.now();
+      const box = el('div', 'credit');
+      box.innerHTML = `
+        <div class="credit-head">
+          <b>${cur(d.amount)} · ${d.days} дн. · ${d.rate}%</b>
+          <span class="tag ${d.status === 'active' ? 'ok' : ''}">${
+            d.status === 'active' ? (matured ? 'готов' : 'работает')
+            : d.status === 'early' ? 'закрыт досрочно' : 'закрыт'}</span>
+        </div>
+        <div class="kv"><span>Вернётся</span><b>${cur(d.total)}</b></div>
+        <div class="kv"><span>Доход</span><b class="pos">${cur(d.total - d.amount)}</b></div>
+        ${d.status === 'active'
+          ? `<div class="kv"><span>Дата выплаты</span><b>${new Date(d.due_at).toLocaleString('ru-RU')} · ${left(d.due_at)}</b></div>`
+          : ''}`;
+      if (d.status === 'active') {
+        const close = el('button', 'btn mini full' + (matured ? ' primary' : ''),
+          matured ? 'Забрать с процентами' : 'Забрать досрочно');
+        close.onclick = () => {
+          const act = () => guard(async () => {
+            const r = await S.api.depositClose(S.token, d.id);
+            await refresh(); render();
+            ok(r.early ? 'Вклад закрыт досрочно, проценты сгорели' : 'Вклад закрыт с доходом');
+          });
+          if (matured) act();
+          else confirmBox('Досрочное закрытие',
+            'Вернётся только тело вклада — ' + cur(d.amount) + ', проценты сгорят. Продолжить?', act);
+        };
+        box.appendChild(close);
+      }
+      v.appendChild(box);
+    });
 
     v.appendChild(el('div', 'sec-title', 'Мои кредиты'));
     if (!S.credits.length) { v.appendChild(el('div', 'card', '<div class="empty">Вы ещё не брали кредитов</div>')); return; }
@@ -1030,6 +1203,49 @@
   }
 
   function creditLimit() { return inv().limit_up ? C.CREDIT_LIMIT_VIP : C.CREDIT_LIMIT; }
+
+  function depositModal() {
+    modal('Новый вклад', (b, m) => {
+      const f = el('label', 'field', '<span>Сумма, чекурубли</span><input inputmode="decimal" value="1000"><em class="err"></em>');
+      b.appendChild(f);
+      let plan = C.DEPOSIT_PLANS[2];
+      const bonus = inv().deposit_plus ? 3 : 0;
+      const seg = el('div', 'seg');
+      C.DEPOSIT_PLANS.forEach(p => {
+        const btn = el('button', 'seg-btn' + (p === plan ? ' active' : ''),
+          p.label + '<br><small>' + (p.rate + bonus) + '%</small>');
+        btn.onclick = () => {
+          plan = p;
+          [...seg.children].forEach(x => x.classList.toggle('active', x === btn));
+          calc();
+        };
+        seg.appendChild(btn);
+      });
+      b.appendChild(seg);
+      const info = el('div', 'card', '');
+      b.appendChild(info);
+      const calc = () => {
+        const sum = Number(String(f.querySelector('input').value).replace(',', '.')) || 0;
+        const rate = plan.rate + bonus;
+        const total = Math.round(sum * (1 + rate / 100) * 100) / 100;
+        info.innerHTML = `
+          <div class="kv"><span>Ставка</span><b>${rate}%${bonus ? ' (с надбавкой)' : ''}</b></div>
+          <div class="kv"><span>Доход</span><b class="pos">${cur(total - sum)}</b></div>
+          <div class="kv"><span>Выплата</span><b>${new Date(Date.now() + plan.days * 864e5).toLocaleString('ru-RU')}</b></div>
+          <div class="kv"><span>Вернётся всего</span><b>${cur(total)}</b></div>`;
+      };
+      f.querySelector('input').addEventListener('input', calc);
+      calc();
+      const go = el('button', 'btn primary full', 'Открыть вклад');
+      go.onclick = () => guard(async () => {
+        const sum = Number(String(f.querySelector('input').value).replace(',', '.'));
+        await S.api.depositOpen(S.token, sum, plan.days);
+        m.close(); await refresh(); render();
+        ok('Вклад открыт на ' + cur(sum));
+      });
+      b.appendChild(go);
+    });
+  }
 
   function creditModal() {
     modal('Кредит в Чекунец Банке', (b, m) => {
@@ -1203,6 +1419,15 @@
     });
   }
 
+  function resetAuth() {
+    $$('[data-auth]').forEach(x => x.classList.toggle('active', x.dataset.auth === 'login'));
+    $('#form-login').classList.remove('hidden');
+    $('#form-register').classList.add('hidden');
+    $('#form-register').reset();
+    $$('#form-register .err, #form-login .err').forEach(e => e.textContent = '');
+    show('screen-auth');
+  }
+
   function logout() {
     const t = S.token;
     localStorage.removeItem('cb_token');
@@ -1233,13 +1458,25 @@
       <div class="stat"><b>${S.credits.length}</b><span>кредитов</span></div>`;
     v.appendChild(st);
 
+    v.appendChild(el('div', 'sec-title', 'Достижения'));
+    const got = achievements();
+    const ach = el('div', 'ach');
+    got.forEach(a => {
+      const item = el('div', 'ach-item' + (a.done ? ' on' : ''));
+      item.innerHTML = `<b>${esc(a.name)}</b><span class="muted">${esc(a.desc)}</span>`;
+      ach.appendChild(item);
+    });
+    v.appendChild(ach);
+    v.appendChild(el('div', 'empty', 'Получено ' + got.filter(a => a.done).length + ' из ' + got.length));
+
     v.appendChild(el('div', 'sec-title', 'Личные данные'));
     v.appendChild(el('div', 'card', `
       <div class="kv"><span>Имя</span><b>${esc(u.first_name)}</b></div>
       <div class="kv"><span>Фамилия</span><b>${esc(u.last_name)}</b></div>
       <div class="kv"><span>Латиницей</span><b>${esc(u.card_holder)}</b></div>
       <div class="kv"><span>Телефон</span><b class="mono">${esc(U.prettyPhone(u.phone))}</b></div>
-      <div class="kv"><span>Почта</span><b>${esc(u.email)}</b></div>
+      <div class="kv"><span>Почта</span><b>${u.email ? esc(u.email) : 'не указана'}</b></div>
+      <div class="kv"><span>Видят другие клиенты</span><b>только имя и первую букву фамилии</b></div>
       <div class="kv"><span>Статус</span><b>${C.ROLES[u.role] ? esc(C.ROLES[u.role].label) : 'Клиент'}</b></div>
       <div class="kv"><span>Титул</span><b>${u.equipped && u.equipped.title ? esc(u.equipped.title) : '—'}</b></div>`));
 
@@ -1286,6 +1523,30 @@
     v.appendChild(out);
   }
 
+  function achievements() {
+    const u = S.user, i = inv();
+    const games = S.tx.filter(t => t.category.startsWith('game'));
+    const wins = games.filter(t => t.amount > 0).length;
+    const bestWin = Math.max(0, ...games.map(t => t.amount));
+    const transfers = S.tx.filter(t => t.category === 'transfer_out').length;
+    const closed = S.credits.filter(c => c.status === 'closed').length;
+    const cases = S.tx.filter(t => t.category === 'case').length;
+    return [
+      { name: 'Клиент банка', desc: 'Открыть счёт и получить карту', done: true },
+      { name: 'Первый перевод', desc: 'Отправить чекурубли другому клиенту', done: transfers >= 1 },
+      { name: 'Щедрая душа', desc: 'Сделать 10 переводов', done: transfers >= 10 },
+      { name: 'Игрок', desc: 'Сыграть 10 раз', done: games.length >= 10 },
+      { name: 'Завсегдатай', desc: 'Сыграть 50 раз', done: games.length >= 50 },
+      { name: 'Крупный куш', desc: 'Выиграть 5 000 за один раз', done: bestWin >= 5000 },
+      { name: 'Везунчик', desc: 'Выиграть 25 раз', done: wins >= 25 },
+      { name: 'Честный заёмщик', desc: 'Погасить кредит полностью', done: closed >= 1 },
+      { name: 'Вкладчик', desc: 'Открыть вклад', done: S.deposits.length >= 1 },
+      { name: 'Коллекционер', desc: 'Купить три оформления карты', done: (i.skins || []).length >= 4 },
+      { name: 'Открыватель', desc: 'Вскрыть 10 ящиков', done: cases >= 10 },
+      { name: 'Состояние', desc: 'Накопить 100 000 на счёте', done: u.balance >= 100000 }
+    ];
+  }
+
   function editProfile() {
     const u = S.user;
     modal('Изменение контактов', (b, m) => {
@@ -1298,7 +1559,7 @@
       go.onclick = () => guard(async () => {
         const email = f1.querySelector('input').value.trim();
         const phone = U.normalizePhone(f2.querySelector('input').value);
-        if (!U.isEmail(email)) return bad('Проверьте адрес почты');
+        if (email && !U.isEmail(email)) return bad('Проверьте адрес или оставьте поле пустым');
         if (!phone) return bad('Телефон должен быть в формате +7…');
         await S.api.updateProfile(S.token, { email, phone });
         m.close(); await refresh(); render();
@@ -2006,6 +2267,259 @@
         else if (my === bank) finish(stake, 'Ничья ' + my + ':' + bank, null);
         else finish(0, 'Банк: ' + bank + ' — сильнее', false);
       };
+    }, { sticky: true });
+  }
+
+  function gameCatch() {
+    modal('Ловля купюр', (b, m) => {
+      let score = 0, t = 20, done = false, raf = 0;
+      const info = el('div', 'muted', 'Ведите сумку пальцем или мышью');
+      info.style.textAlign = 'center';
+      b.appendChild(info);
+      const { cv, ctx, w, h, colors } = canvasIn(b, 1.05);
+
+      const items = [];
+      let bagX = w / 2;
+      const bagW = Math.max(54, w * 0.2), bagH = 14;
+
+      const move = e => {
+        const r = cv.getBoundingClientRect();
+        const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+        bagX = Math.max(bagW / 2, Math.min(w - bagW / 2, x * (w / r.width)));
+      };
+      cv.addEventListener('mousemove', move);
+      cv.addEventListener('touchmove', e => { e.preventDefault(); move(e); }, { passive: false });
+
+      const finish = () => {
+        if (done) return; done = true;
+        cancelAnimationFrame(raf);
+        const earned = Math.min(200, Math.max(0, score) * 6);
+        markPlayed('catch');
+        settle('catch', 0, earned, 'Ловля купюр: поймано ' + score).then(() => {
+          m.close();
+          earned ? ok('Заработано ' + cur(earned)) : bad('Ни одной купюры');
+        });
+      };
+
+      let spawn = 0;
+      const step = () => {
+        if (done) return;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = colors.panel;
+        ctx.fillRect(0, 0, w, h);
+
+        if (--spawn <= 0) {
+          spawn = 22 + Math.floor(Math.random() * 16);
+          const bombs = Math.random() < 0.25;
+          items.push({ x: 20 + Math.random() * (w - 40), y: -20, v: 1.6 + Math.random() * 1.8, bomb: bombs });
+        }
+
+        items.forEach(it => {
+          it.y += it.v;
+          if (it.bomb) {
+            ctx.fillStyle = colors.bad;
+            ctx.fillRect(it.x - 11, it.y - 9, 22, 18);
+            ctx.fillStyle = colors.panel;
+            ctx.font = 'bold 9px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText('ЯЩ', it.x, it.y + 3);
+          } else {
+            ctx.fillStyle = colors.acc2;
+            ctx.fillRect(it.x - 15, it.y - 8, 30, 16);
+            ctx.fillStyle = colors.panel;
+            ctx.font = 'bold 9px system-ui';
+            ctx.textAlign = 'center';
+            ctx.fillText('ЧК', it.x, it.y + 3);
+          }
+          if (!it.hit && it.y > h - 34 && it.y < h - 10 && Math.abs(it.x - bagX) < bagW / 2 + 14) {
+            it.hit = true;
+            score += it.bomb ? -2 : 1;
+            info.textContent = 'Осталось ' + t + ' секунд · поймано ' + Math.max(0, score);
+          }
+        });
+        for (let i = items.length - 1; i >= 0; i--) if (items[i].y > h + 30 || items[i].hit) items.splice(i, 1);
+
+        ctx.fillStyle = colors.acc;
+        ctx.beginPath();
+        ctx.roundRect(bagX - bagW / 2, h - 30, bagW, bagH + 8, 6);
+        ctx.fill();
+
+        raf = requestAnimationFrame(step);
+      };
+      step();
+
+      const iv = setInterval(() => {
+        t--;
+        info.textContent = 'Осталось ' + t + ' секунд · поймано ' + Math.max(0, score);
+        if (t <= 0) { clearInterval(iv); finish(); }
+      }, 1000);
+    }, { sticky: true });
+  }
+
+  const PLINKO = [12, 3, 1.4, 0.6, 0.2, 0.6, 1.4, 3, 12];
+  function gamePlinko() {
+    modal('Плинко', (b, m) => {
+      const getStake = stakeField(b);
+      const info = el('div', 'muted', 'Ячейки: ' + PLINKO.map(x => '×' + x).join(' · '));
+      info.style.textAlign = 'center';
+      b.appendChild(info);
+      const { ctx, w, h, colors } = canvasIn(b, 1.05);
+      const rows = 8;
+      const top = 30, bottom = h - 42;
+      const gap = (bottom - top) / rows;
+      const cellW = w / PLINKO.length;
+
+      const pegs = [];
+      for (let r = 0; r < rows; r++) {
+        const count = r + 2;
+        for (let i = 0; i < count; i++) {
+          pegs.push({ x: w / 2 + (i - (count - 1) / 2) * cellW, y: top + r * gap });
+        }
+      }
+
+      const drawBoard = (ballX, ballY, hit) => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = colors.panel;
+        ctx.fillRect(0, 0, w, h);
+        pegs.forEach(p => {
+          ctx.fillStyle = colors.line;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 3.2, 0, 7);
+          ctx.fill();
+        });
+        PLINKO.forEach((k, i) => {
+          const x = i * cellW;
+          ctx.fillStyle = hit === i ? colors.acc : colors.line;
+          ctx.beginPath();
+          ctx.roundRect(x + 2, bottom + 8, cellW - 4, 26, 5);
+          ctx.fill();
+          ctx.fillStyle = hit === i ? '#fff' : colors.muted;
+          ctx.font = 'bold 10px system-ui';
+          ctx.textAlign = 'center';
+          ctx.fillText('×' + k, x + cellW / 2, bottom + 25);
+        });
+        if (ballY != null) {
+          ctx.fillStyle = colors.acc2;
+          ctx.beginPath();
+          ctx.arc(ballX, ballY, 7, 0, 7);
+          ctx.fill();
+        }
+      };
+      drawBoard();
+
+      const go = el('button', 'btn primary full', 'Бросить шарик');
+      go.onclick = () => {
+        let stake;
+        try { stake = getStake(); } catch (e) { return bad(e.message); }
+        go.disabled = true;
+        const path = [];
+        let slot = 0;
+        for (let r = 0; r < rows; r++) {
+          const right = Math.random() < 0.5 ? 0 : 1;
+          slot += right;
+          path.push(right);
+        }
+        let r = 0, px = w / 2, py = 6, target = w / 2;
+        const anim = () => {
+          py += 3.4;
+          const stage = Math.min(rows, Math.floor((py - top) / gap) + 1);
+          if (stage !== r && stage <= rows) {
+            r = stage;
+            target = px + (path[r - 1] ? cellW / 2 : -cellW / 2);
+          }
+          px += (target - px) * 0.25;
+          if (py >= bottom + 6) {
+            const idx = Math.max(0, Math.min(PLINKO.length - 1, Math.round((px - cellW / 2) / cellW)));
+            drawBoard(px, bottom + 6, idx);
+            const k = PLINKO[idx];
+            const payout = Math.round(stake * k * 100) / 100;
+            info.innerHTML = '<b class="' + (payout > stake ? 'pos' : 'neg') + '">Ячейка ×' + k + ' — ' + cur(payout) + '</b>';
+            settle('plinko', stake, payout, 'Плинко ×' + k).then(() => {
+              setTimeout(() => { m.close(); payout > stake ? ok('Выигрыш ' + cur(payout)) : bad('×' + k + ' — мало'); }, 1000);
+            });
+            return;
+          }
+          drawBoard(px, py);
+          requestAnimationFrame(anim);
+        };
+        anim();
+      };
+      b.appendChild(go);
+    }, { sticky: true });
+  }
+
+  function gameDarts() {
+    const RINGS = [
+      { r: 0.10, k: 8, name: 'яблочко' },
+      { r: 0.24, k: 3, name: 'центр' },
+      { r: 0.42, k: 1.6, name: 'середина' },
+      { r: 0.66, k: 0.6, name: 'край' },
+      { r: 1.00, k: 0, name: 'молоко' }
+    ];
+    modal('Дартс', (b, m) => {
+      const getStake = stakeField(b);
+      const info = el('div', 'muted', 'Прицел ходит кругами — жмите в нужный момент');
+      info.style.textAlign = 'center';
+      b.appendChild(info);
+      const { ctx, w, h, colors } = canvasIn(b, 1);
+      const cx = w / 2, cy = h / 2, R = Math.min(w, h) / 2 - 12;
+      let angle = 0, rad = 0, dir = 1, raf = 0, thrown = false;
+
+      const draw = (markX, markY) => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = colors.panel;
+        ctx.fillRect(0, 0, w, h);
+        [...RINGS].reverse().forEach((ring, i) => {
+          ctx.fillStyle = i % 2 ? colors.line : colors.panel;
+          ctx.beginPath();
+          ctx.arc(cx, cy, ring.r * R, 0, 7);
+          ctx.fill();
+          ctx.strokeStyle = colors.muted;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        });
+        ctx.fillStyle = colors.acc;
+        ctx.beginPath();
+        ctx.arc(cx, cy, RINGS[0].r * R, 0, 7);
+        ctx.fill();
+        ctx.strokeStyle = colors.acc2;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(markX - 9, markY); ctx.lineTo(markX + 9, markY);
+        ctx.moveTo(markX, markY - 9); ctx.lineTo(markX, markY + 9);
+        ctx.stroke();
+      };
+
+      const loop = () => {
+        if (thrown) return;
+        angle += 0.075;
+        rad += dir * 0.016;
+        if (rad > 1) { rad = 1; dir = -1; }
+        if (rad < 0.02) { rad = 0.02; dir = 1; }
+        draw(cx + Math.cos(angle) * rad * R, cy + Math.sin(angle) * rad * R);
+        raf = requestAnimationFrame(loop);
+      };
+
+      const go = el('button', 'btn primary full', 'Бросок');
+      go.onclick = () => {
+        if (thrown) return;
+        let stake;
+        try { stake = getStake(); } catch (e) { return bad(e.message); }
+        thrown = true;
+        cancelAnimationFrame(raf);
+        const mx = cx + Math.cos(angle) * rad * R, my = cy + Math.sin(angle) * rad * R;
+        draw(mx, my);
+        const ring = RINGS.find(x => rad <= x.r) || RINGS[RINGS.length - 1];
+        const payout = Math.round(stake * ring.k * 100) / 100;
+        info.innerHTML = payout
+          ? '<b class="' + (payout > stake ? 'pos' : 'neg') + '">Попадание в ' + ring.name + ' — ×' + ring.k + '</b>'
+          : '<b class="neg">Молоко</b>';
+        settle('darts', stake, payout, 'Дартс: ' + ring.name).then(() => {
+          setTimeout(() => { m.close(); payout > stake ? ok('Выигрыш ' + cur(payout)) : bad('Бросок не окупился'); }, 1000);
+        });
+      };
+      b.appendChild(go);
+      loop();
     }, { sticky: true });
   }
 
